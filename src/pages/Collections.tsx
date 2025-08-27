@@ -348,7 +348,7 @@ function Collections() {
 
   // Collection selection and expansion handlers
   const handleCollectionSelection = (collectionId: string) => {
-	  const amount = collections.find(item => item.collection_id === collectionId).amount; 
+	  const amount = collections.find(item => item.collection_id === collectionId)?.amount || 0; 
     setSelectedCollections((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(collectionId)) {
