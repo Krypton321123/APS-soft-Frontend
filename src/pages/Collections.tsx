@@ -59,6 +59,7 @@ function Collections() {
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set())
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'cheque' | 'online'>('all')
   const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>({})
+  const [totalSelectedAmount, setTotalSelectedAmount] = useState<number>(0)
   const today = new Date().toISOString().split('T')[0]
   const [fromDate, setFromDate] = useState(today)
   const [toDate, setToDate] = useState(today)
@@ -347,12 +348,17 @@ function Collections() {
 
   // Collection selection and expansion handlers
   const handleCollectionSelection = (collectionId: string) => {
+	  const amount = collections.find(item => item.collection_id === collectionId).amount; 
     setSelectedCollections((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(collectionId)) {
         newSet.delete(collectionId)
+	setTotalSelectedAmount(prev => prev - Number(amount))
+	console.log(totalSelectedAmount); 
       } else {
         newSet.add(collectionId)
+	setTotalSelectedAmount(prev => prev + Number(amount)); 
+	console.log(totalSelectedAmount); 
       }
       return newSet
     })
@@ -425,10 +431,15 @@ function Collections() {
   }
 
   const handleSelectAllCollections = () => {
+	  const totalAmount = collections.map(item => item.amount).reduce((acc: number, curr: number) => Number(acc) + Number(curr), 0); 
     if (selectedCollections.size === filteredCollections.length) {
       setSelectedCollections(new Set())
+      setTotalSelectedAmount(0);
+      console.log(totalSelectedAmount);
     } else {
       setSelectedCollections(new Set(filteredCollections.map((collection) => collection.collection_id)))
+      setTotalSelectedAmount(Number(totalAmount))
+	console.log(totalSelectedAmount)
     }
   }
 
@@ -862,6 +873,9 @@ function Collections() {
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
           {selectedCollections.size} collection{selectedCollections.size !== 1 ? 's' : ''} selected
+        </div>
+	<div className="text-sm text-gray-600">
+		Total Amount: {totalSelectedAmount}
         </div>
         <div className="flex gap-3">
           <button
