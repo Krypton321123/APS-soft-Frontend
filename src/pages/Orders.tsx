@@ -809,7 +809,7 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
                         day: "2-digit",
                         month: "2-digit",
                         year: "2-digit",
-                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.rate).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]
+                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.quantity).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]
                     
                   })
                 ]
