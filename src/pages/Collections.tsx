@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import React from "react"
 import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaMoneyBillWave, FaCreditCard, FaUniversity } from "react-icons/fa"
-
+import { CSVLink } from "react-csv"
 
 
 // Types
@@ -28,6 +28,7 @@ interface Collection {
   upiId?: string
   transactionId?: string
   createdAt: string
+  empName: string
 }
 
 interface LocationNode {
@@ -304,43 +305,6 @@ function Collections() {
     } catch (error) {
       console.error("Error fetching collections:", error)
       setError(error instanceof Error ? error.message : "Failed to fetch collections")
-
-      // Fallback to mock data for demo purposes
-      const mockCollections: Collection[] = [
-        {
-          collection_id: "1",
-          partyId: "P001",
-          partyName: "ABC Company",
-          empId: "emp1",
-          amount: 15000,
-          paymentMethod: "cash",
-          createdAt: new Date().toISOString(),
-        },
-        {
-          collection_id: "2",
-          partyId: "P002",
-          partyName: "XYZ Corp",
-          empId: "emp3",
-          amount: 25000,
-          paymentMethod: "cheque",
-          chequeNumber: "CHQ123456",
-          chequeDate: "2025-07-15",
-          bankName: "State Bank",
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-        },
-        {
-          collection_id: "3",
-          partyId: "P003",
-          partyName: "PQR Traders",
-          empId: "emp5",
-          amount: 35000,
-          paymentMethod: "online",
-          upiId: "pqr@upi",
-          transactionId: "TXN987654",
-          createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-        },
-      ]
-      setCollections(mockCollections)
     } finally {
       setCollectionsLoading(false)
     }
@@ -671,17 +635,48 @@ function Collections() {
           </div>
 
           {/* Search Bar */}
-          <div className="relative max-w-md">
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search collections by party name, ID, or employee..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+          <div className="relative justify-between items-center flex flex-row">
+            <div className="w-1/2 h-10 flex">
+                <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                type="text"
+                placeholder="Search orders by party name, ID, or employee..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {collections.length > 0 && <div className="flex gap-3 justify-center items-center">
+                  <button className="bg-blue-600 w-40 mb-2 rounded-lg text-white cursor-pointer">
+                  <CSVLink data={[
+                    ["Employee", "Party Name", "Date", "Method", "Amount"], 
+                    ...collections.map((item) => {
+                      return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                      }), item.paymentMethod, item.amount]
+                    })
+                  ]} filename="all-collection-csv">Download CSV (All collections)</CSVLink>
+                  </button>
+                  {selectedCollections.size > 0 && <button className="bg-blue-600 mb-2 w-40 rounded-lg text-white cursor-pointer">
+                    <CSVLink data={
+                          [
+                          ["Employee", "Party Name", "Date", "Method", "Amount"], 
+                          ...collections.filter(item => selectedCollections.has(item.collection_id)).map((item) => {
+                          return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "2-digit",
+                        }), item.paymentMethod, item.amount]
+                                      
+                        })
+                      ]
+                    } filename="selected-collection-csv">Download CSV (Selected orders)</CSVLink>
+                    </button>}
+          </div>}
         </div>
+      
 
         {/* Collections Table - Flex grow to take remaining space */}
         <div className="flex-1 overflow-y-scroll flex flex-col min-h-0">
@@ -777,7 +772,7 @@ function Collections() {
                     </button>
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                    {collection.empId}
+                    {collection.empName}
                   </td>
                   <td className="px-3 py-4" style={{ width: "200px", maxWidth: "200px" }}>
                     <div className="text-sm font-medium text-gray-900 truncate" title={collection.partyName}>
@@ -893,6 +888,7 @@ function Collections() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

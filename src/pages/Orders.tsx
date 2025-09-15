@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import React from "react"
 import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaTimes } from "react-icons/fa"
+import { CSVLink } from 'react-csv'
 
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL
@@ -575,6 +576,8 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
   }
 
   const handleSelectAllOrders = () => {
+
+    console.log(selectedOrders)
     if (selectedOrders.size === filteredOrders.length) {
       setSelectedOrders(new Set())
       setTotalConsumerQuantity(0); 
@@ -772,16 +775,50 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Orders</h2>
 
           {/* Search Bar */}
-          <div className="relative max-w-md">
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search orders by party name, ID, or employee..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          <div className="relative justify-between items-center flex flex-row">
+            <div className="w-1/2 h-10 flex">
+              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search orders by party name, ID, or employee..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {orders.length !== 0 && <div className="flex gap-3 justify-center items-center">
+            <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
+              <CSVLink data={
+                [
+                  ["Employee", "Party Name", "Date", "Conumser Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                  ...orders.map((item) => {return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.rate).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]})
+                ]
+              } filename={`all-order-CSV`}>Download CSV (All orders)</CSVLink>
+              {/* Employee	Party Name	Date	Bulk Qty	Consumer Qty	Total Qty	Consumer Rate	Bulk Rate	Discount	Total Amount	Payment */}
+            </button>
+            {(selectedOrders.size > 0) && <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
+              <CSVLink data={
+                [
+                  ["Employee", "Party Name", "Date", "Conumser Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                  ...orders.filter(item => selectedOrders.has(item.order_id)).map((item) => {
+                    return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.rate).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]
+                    
+                  })
+                ]
+              } filename="selected-order-csv">Download CSV (Selected orders)</CSVLink>
+              {/* Employee	Party Name	Date	Bulk Qty	Consumer Qty	Total Qty	Consumer Rate	Bulk Rate	Discount	Total Amount	Payment */}
+            </button>}
+          </div>}
           </div>
+          
         </div>
 
         {/* Orders Table - Flex grow to take remaining space */}

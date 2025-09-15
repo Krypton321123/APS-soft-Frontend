@@ -54,7 +54,7 @@ function Sidebar({ children }: {children: React.ReactNode}) {
                             onClick={() => {
                                 navigate(item.path)
                             }}
-                            className={`flex items-center gap-4 p-3 rounded-xl cursor-pointer group transition-all duration-200 hover:translate-x-1 relative ${
+                            className={`flex items-center h-14 gap-4 p-3 rounded-xl cursor-pointer group transition-all duration-200 hover:translate-x-1 relative ${
                                 !isOpen ? 'justify-center' : ''
                             } ${
                                 item.isActive 

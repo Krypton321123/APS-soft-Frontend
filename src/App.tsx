@@ -15,7 +15,7 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/orders" element={<ProtectedRoute><Sidebar><Orders /></Sidebar></ProtectedRoute>} />
         <Route path='/collections' element={<ProtectedRoute><Sidebar><Collections /></Sidebar></ProtectedRoute>} />
-        <Route path='/attendance' element={<ProtectedRoute><Sidebar><Attendance /></Sidebar></ProtectedRoute>} />
+        <Route path='/attendance'  element={<ProtectedRoute><Sidebar><Attendance /></Sidebar></ProtectedRoute>} />
         <Route path='/images' element={<ProtectedRoute><Sidebar><Images /></Sidebar></ProtectedRoute>} />
         <Route path='/ratelist' element={<ProtectedRoute><Sidebar><Rate /></Sidebar></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/orders" replace />} />
