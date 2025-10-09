@@ -3,7 +3,6 @@ import React from "react"
 import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaMoneyBillWave, FaCreditCard, FaUniversity } from "react-icons/fa"
 import { CSVLink } from "react-csv"
 
-
 // Types
 interface User {
   user_id: number
@@ -508,7 +507,7 @@ function Collections() {
   )
 
   const isAllSelected = filteredCollections.length > 0 && selectedCollections.size === filteredCollections.length
-  const isIndeterminate = selectedCollections.size > 0 && selectedCollections.size < filteredCollections.length
+  // const isIndeterminate = selectedCollections.size > 0 && selectedCollections.size < filteredCollections.length
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
@@ -679,7 +678,7 @@ function Collections() {
       
 
         {/* Collections Table - Flex grow to take remaining space */}
-        <div className="flex-1 overflow-y-scroll flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-scroll">
           {collectionsLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -691,67 +690,56 @@ function Collections() {
             </div>
           ) : (
             <>
-  <div className="bg-white rounded-lg shadow flex-1 min-h-0 border border-gray-200">
-    <div className="h-full overflow-x-auto overflow-y-auto">
-      <table className="w-full divide-y divide-gray-200" style={{ minWidth: "800px" }}>
+ <div className="flex-1 flex flex-col min-h-0 max-h-[68vh]">
+  {collectionsLoading ? (
+    <div className="flex items-center justify-center py-12">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    </div>
+  ) : filteredCollections.length === 0 ? (
+    <div className="text-center py-12">
+      <div className="text-gray-500 text-lg mb-2">No collections found</div>
+      <div className="text-gray-400 text-sm">
+        Select locations from the filter panel to view collections
+      </div>
+    </div>
+  ) : (
+        <div className="flex-1 overflow-y-scroll">
+        
+        <table className="w-full" style={{ minWidth: "800px" }}>
         <thead className="bg-gray-50 sticky top-0 z-10">
           <tr>
-            <th
-              className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "40px" }}
-            >
+            <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
               <input
                 type="checkbox"
                 checked={isAllSelected}
-                ref={(el) => {
-                  if (el) el.indeterminate = isIndeterminate
-                }}
+                // ref={(el) => el && (el.indeterminate = isIndeterminate)}
                 onChange={handleSelectAllCollections}
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
             </th>
-            <th
-              className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "50px" }}
-            >
+            <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
               Expand
             </th>
-            <th
-              className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "100px" }}
-            >
+            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
               Employee
             </th>
-            <th
-              className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "200px", maxWidth: "200px" }}
-            >
+            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-52">
               Party Name
             </th>
-            <th
-              className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "100px" }}
-            >
+            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
               Date
             </th>
-            <th
-              className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "120px" }}
-            >
+            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
               Payment Method
             </th>
-            <th
-              className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-              style={{ width: "110px" }}
-            >
+            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
               Amount
             </th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="bg-white overflow-y-scroll divide-y divide-gray-200">
           {filteredCollections.map((collection) => {
             const isExpanded = expandedCollections.has(collection.collection_id)
-
             return (
               <React.Fragment key={collection.collection_id}>
                 <tr className="hover:bg-gray-50">
@@ -759,26 +747,39 @@ function Collections() {
                     <input
                       type="checkbox"
                       checked={selectedCollections.has(collection.collection_id)}
-                      onChange={() => handleCollectionSelection(collection.collection_id)}
+                      onChange={() =>
+                        handleCollectionSelection(collection.collection_id)
+                      }
                       className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
                   </td>
                   <td className="px-2 py-4 whitespace-nowrap">
                     <button
-                      onClick={() => handleCollectionExpansion(collection.collection_id)}
+                      onClick={() =>
+                        handleCollectionExpansion(collection.collection_id)
+                      }
                       className="p-1 hover:bg-gray-200 rounded transition-colors"
                     >
-                      {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+                      {isExpanded ? (
+                        <FaChevronDown size={14} />
+                      ) : (
+                        <FaChevronRight size={14} />
+                      )}
                     </button>
                   </td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                  <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {collection.empName}
                   </td>
-                  <td className="px-3 py-4" style={{ width: "200px", maxWidth: "200px" }}>
-                    <div className="text-sm font-medium text-gray-900 truncate" title={collection.partyName}>
+                  <td className="px-3 py-4 w-52 max-w-52">
+                    <div
+                      className="text-sm font-medium text-gray-900 truncate"
+                      title={collection.partyName}
+                    >
                       {collection.partyName}
                     </div>
-                    <div className="text-xs text-gray-500 truncate">{collection.partyId}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {collection.partyId}
+                    </div>
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(collection.createdAt).toLocaleDateString("en-IN", {
@@ -798,8 +799,16 @@ function Collections() {
                   <td className="px-3 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
                     <input
                       type="number"
-                      value={editedAmounts[collection.collection_id] ?? collection.amount}
-                      onChange={(e) => handleAmountChange(collection.collection_id, Number(e.target.value))}
+                      value={
+                        editedAmounts[collection.collection_id] ??
+                        collection.amount
+                      }
+                      onChange={(e) =>
+                        handleAmountChange(
+                          collection.collection_id,
+                          Number(e.target.value)
+                        )
+                      }
                       className="w-24 text-right border rounded"
                     />
                   </td>
@@ -808,44 +817,74 @@ function Collections() {
                   <tr>
                     <td colSpan={7} className="px-6 py-4 bg-gray-50">
                       <div className="space-y-3">
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Collection Details:</h4>
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">
+                          Collection Details:
+                        </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <div className="text-xs font-medium text-gray-500 mb-1">Collection ID</div>
-                            <div className="text-sm text-gray-900">{collection.collection_id}</div>
+                            <div className="text-xs font-medium text-gray-500 mb-1">
+                              Collection ID
+                            </div>
+                            <div className="text-sm text-gray-900">
+                              {collection.collection_id}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs font-medium text-gray-500 mb-1">Payment Method</div>
+                            <div className="text-xs font-medium text-gray-500 mb-1">
+                              Payment Method
+                            </div>
                             <div className="text-sm text-gray-900 flex items-center gap-2">
                               {getPaymentMethodIcon(collection.paymentMethod)}
                               {getPaymentMethodLabel(collection.paymentMethod)}
                             </div>
                           </div>
-                          {collection.paymentMethod === 'cheque' && (
+
+                          {collection.paymentMethod === "cheque" && (
                             <>
                               <div>
-                                <div className="text-xs font-medium text-gray-500 mb-1">Cheque Number</div>
-                                <div className="text-sm text-gray-900">{collection.chequeNumber || 'N/A'}</div>
+                                <div className="text-xs font-medium text-gray-500 mb-1">
+                                  Cheque Number
+                                </div>
+                                <div className="text-sm text-gray-900">
+                                  {collection.chequeNumber || "N/A"}
+                                </div>
                               </div>
                               <div>
-                                <div className="text-xs font-medium text-gray-500 mb-1">Cheque Date</div>
-                                <div className="text-sm text-gray-900">{collection.chequeDate || 'N/A'}</div>
+                                <div className="text-xs font-medium text-gray-500 mb-1">
+                                  Cheque Date
+                                </div>
+                                <div className="text-sm text-gray-900">
+                                  {collection.chequeDate || "N/A"}
+                                </div>
                               </div>
                               <div>
-                                <div className="text-xs font-medium text-gray-500 mb-1">Bank Name</div>
-                                <div className="text-sm text-gray-900">{collection.bankName || 'N/A'}</div>
+                                <div className="text-xs font-medium text-gray-500 mb-1">
+                                  Bank Name
+                                </div>
+                                <div className="text-sm text-gray-900">
+                                  {collection.bankName || "N/A"}
+                                </div>
                               </div>
                             </>
                           )}
-                          {collection.paymentMethod === 'online' && (
+
+                          {collection.paymentMethod === "online" && (
                             <>
                               <div>
-                                <div className="text-xs font-medium text-gray-500 mb-1">UPI ID</div>
-                                <div className="text-sm text-gray-900">{collection.upiId || 'N/A'}</div>
+                                <div className="text-xs font-medium text-gray-500 mb-1">
+                                  UPI ID
+                                </div>
+                                <div className="text-sm text-gray-900">
+                                  {collection.upiId || "N/A"}
+                                </div>
                               </div>
                               <div>
-                                <div className="text-xs font-medium text-gray-500 mb-1">Transaction ID</div>
-                                <div className="text-sm text-gray-900">{collection.transactionId || 'N/A'}</div>
+                                <div className="text-xs font-medium text-gray-500 mb-1">
+                                  Transaction ID
+                                </div>
+                                <div className="text-sm text-gray-900">
+                                  {collection.transactionId || "N/A"}
+                                </div>
                               </div>
                             </>
                           )}
@@ -859,8 +898,9 @@ function Collections() {
           })}
         </tbody>
       </table>
-    </div>
-  </div>
+      </div>
+  )}
+</div>
 
   {/* Action Buttons - Fixed at bottom */}
   {selectedCollections.size > 0 && (

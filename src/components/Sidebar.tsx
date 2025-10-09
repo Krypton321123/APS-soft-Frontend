@@ -120,7 +120,7 @@ function Sidebar({ children }: {children: React.ReactNode}) {
             
             {/* Content */}
             <div className='relative z-10 p-8'>
-                <div className={`bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-6 ${(location.pathname === '/images' || location.pathname === "/collections" || location.pathname === "/orders") ? 'h-screen' : 'h-full'} overflow-auto`}>
+                <div className={`bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-6 ${(location.pathname === '/images' || location.pathname === "/orders") ? 'h-screen' : 'h-full'} overflow-auto`}>
                     {children || (
                         <div className='flex items-center justify-center h-full'>
                             <div className='text-center'>
