@@ -166,9 +166,9 @@ const Attendance: React.FC = () => {
                 {/* Daily status */}
                 {data.statuses.map((status: string, dayIndex: number) => (
                   <td
-                    key={dayIndex}
+                    key={`day-${dayIndex}`}
                     className={`p-2 text-center border-l border-t border-blue-200 ${
-                      status === 'P' ? 'text-green-600' :
+                      status === 'present' ? 'text-green-600' :
                       status === 'A' ? 'text-red-600' : 'text-blue-600'
                     }`}
                   >

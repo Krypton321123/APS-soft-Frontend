@@ -13,6 +13,7 @@ function Images() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
+  const [totals, setTotals] = useState<any>({}); 
 
   const [depotOptions, setDepotOptions] = useState<string[]>([]);
   const [employeeOptions, setEmployeeOptions] = useState<string[]>([]);
@@ -59,7 +60,8 @@ function Images() {
         params: { depot, employee, startDate, endDate }
       });
       console.log(response)
-      setImages(response.data.data);
+      setImages(response.data.data.sendData);
+      setTotals(response.data.data.total)
       if (response.data.length === 0) {
         setShowNoResults(true);
       }
@@ -220,7 +222,9 @@ function Images() {
                   <th className='text-gray-500 font-normal tracking-normal p-4'>
                     Collection Amount
                   </th>
-
+                  <th className='text-gray-500 font-normal tracking-normal p-4'>
+                    Outstanding Amount
+                  </th>
                 </tr>
           </thead>
           <tbody className='divide-y divide-gray-400'>
@@ -259,11 +263,29 @@ function Images() {
                   <td className='px-4 py-2 text-center'>
                     {img.collectionAmount}
                   </td>
+                  <td className='px-4 py-2 text-center'>
+                    {img.outstanding}
+                  </td>
               
 
              {/* </div> */}
             </tr>
           )})}
+          {/* totalOutstanding, totalOrderQuantity, totalCollectionAmt */}
+          <tr>
+            <td className='px-4 py-2 text-center'>-</td>
+            <td className='px-4 py-2 text-center'>-</td>
+            <td className='px-4 py-2 text-center'>-</td>
+            <td className='px-4 py-2 text-center'>
+              {totals?.totalOrderQuantity}
+            </td>
+            <td className='px-4 py-2 text-center'>
+              {totals.totalCollectionAmt}
+            </td>
+            <td className='px-4 py-2 text-center'>
+              {totals.totalOutstanding}
+            </td>
+          </tr>
           </tbody>
            
         </table>
