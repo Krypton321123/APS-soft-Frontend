@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import { FaBook, FaFileImage, FaMoneyBillWave, FaUser } from 'react-icons/fa'
-import { FiSidebar, FiMenu } from "react-icons/fi";
 import { useNavigate, useLocation } from 'react-router-dom';
 import { IoMdExit } from "react-icons/io";
 import { CiBadgeDollar, CiLocationArrow1 } from 'react-icons/ci'
@@ -45,7 +44,7 @@ function Sidebar({ children }: {children: React.ReactNode}) {
             {/* Navigation */}
             <nav className='mt-8 px-4'>
                 <div className='space-y-2'>
-                    {sidebarContent.map((item, index) => (
+                    {sidebarContent.map((item) => (
                         <div onClick={() => {navigate(item.path)}}>
                             <motion.p layout className={`text-lg flex items-center gap-2 justfiy-center hover:bg-gray-200 rounded-lg w-full h-8 ${isOpen ? 'p-1' : 'p-1'} cursor-pointer`}>{item.icon} {isOpen && <p className='text-sm whitespace-nowrap'>{item.name}</p>}</motion.p>
                         </div>

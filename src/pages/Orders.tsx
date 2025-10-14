@@ -749,7 +749,7 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
         <input
           type="date"
           value={toDate}
-          onChange={(e) => {setFromDate(e.target.value); setIsSelectingDate(false)}}
+          onChange={(e) => {setToDate(e.target.value); setIsSelectingDate(false)}}
           onClick={() => setIsSelectingDate(true)}
           className="w-full p-2 border border-gray-300 rounded-lg text-sm"
         />
