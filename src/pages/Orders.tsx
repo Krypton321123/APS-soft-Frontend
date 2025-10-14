@@ -2,11 +2,12 @@ import { useState, useEffect } from "react"
 import React from "react"
 import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaTimes } from "react-icons/fa"
 import { CSVLink } from 'react-csv'
+import { motion } from 'motion/react'
+import { IoIosOpen } from "react-icons/io";
 
-// API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL
 
-// Types
+
 interface User {
   user_id: number
   username: string
@@ -42,6 +43,10 @@ interface Order {
   consumerRate?: number
   bulkRate?: number
   orderItems: OrderItem[]
+  outstanding: number
+  collection: {
+    amount: number, paymentMethod: string
+  }
 }
 
 interface LocationNode {
@@ -78,7 +83,9 @@ function Orders() {
   const [fromDate, setFromDate] = useState<string>(today)
   const [toDate, setToDate] = useState<string>(today)
   const [totalConsumerQuantity, setTotalConsumerQuantity] = useState<number>(0);
-  const [totalBulkQuantity, setTotalBulkQuantity] = useState<number>(0);  
+  const [totalBulkQuantity, setTotalBulkQuantity] = useState<number>(0); 
+  const [isSelectingDate, setIsSelectingDate] = useState(false)
+  const [isFilterOpen, setIsFilterOpen] = useState(true) 
 
   console.log(users)
 
@@ -374,6 +381,10 @@ function Orders() {
           paymentMode: "cash",
           status: "completed",
           createdAt: "2025-05-30T10:30:00Z",
+          outstanding: 200, 
+          collection: {
+            amount: 200, paymentMethod: "Cash"
+          },
           orderItems: [
             {
               id: "1",
@@ -398,6 +409,10 @@ function Orders() {
           status: "pending",
           creditDays: 30,
           createdAt: "2025-05-30T14:15:00Z",
+          outstanding: 200, 
+          collection: {
+            amount: 200, paymentMethod: "Cash"
+          },
           orderItems: [
             {
               id: "2",
@@ -694,19 +709,26 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
 
   return (
     <div className="flex h-full bg-gray-50 w-full max-w-full overflow-hidden">
-      {/* Location Filter Panel */}
-      <div
-        className="w-80 bg-white border-r border-gray-200 p-4 overflow-y-auto flex-shrink-0"
+     
+      <motion.div
+        initial={{width: '20rem'}}
+        animate={{width: isFilterOpen ? '20rem' : '2.5rem'}}
+        whileHover={{width: '20rem'}}
+        transition={{duration: 0.3, ease: 'easeInOut'}}
+        onHoverStart={() => {setIsFilterOpen(true)}}
+        onHoverEnd={() => {if (!isSelectingDate) setIsFilterOpen(false)}}
+        className=" bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0"
         style={{ width: "clamp(256px, 20vw, 320px)" }}
       >
-        <div className="mb-4">
-  <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
-    <FaFilter className="text-blue-600" />
-    Filter by Location
-  </h3>
-  <div className="text-xs text-gray-500 mb-4">
-    Select states, depots, or specific employees to filter orders
-  </div>
+      {isFilterOpen ? <div className="p-4">
+    <div className="mb-4">
+      <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+        <FaFilter className="text-blue-600" />
+        Filter by Location
+      </h3>
+      <div className="text-xs text-gray-500 mb-4">
+        Select states, depots, or specific employees to filter orders
+    </div>
 
   {/* Date Range Filter */}
   <div className="mb-4">
@@ -717,8 +739,9 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
         <input
           type="date"
           value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
+          onChange={(e) => {setFromDate(e.target.value); setIsSelectingDate(false)}}
           className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+          onClick={() => setIsSelectingDate(true)}
         />
       </div>
       <div>
@@ -726,7 +749,8 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
         <input
           type="date"
           value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
+          onChange={(e) => {setFromDate(e.target.value); setIsSelectingDate(false)}}
+          onClick={() => setIsSelectingDate(true)}
           className="w-full p-2 border border-gray-300 rounded-lg text-sm"
         />
       </div>
@@ -767,7 +791,10 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
         ) : (
           <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
         )}
-      </div>
+        </div> : <div className="w-40 p-0 absolute left-4.5 h-20">
+           <IoIosOpen size={28}/>
+          </div>}
+      </motion.div>
 
       {/* Orders Panel */}
       <div className="flex-1 p-6 flex flex-col min-h-0 min-w-0">
@@ -874,6 +901,18 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
                           </th>
                           <th
                             className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                            style={{ minWidth: "100px" }}
+                          >
+                            Outstanding
+                          </th>
+                          <th
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                            style={{ minWidth: "100px" }}
+                          >
+                            Collection
+                          </th>
+                          <th
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                             style={{ width: "100px" }}
                           >
                             Date
@@ -957,11 +996,22 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
                                 <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                                   {order.empName}
                                 </td>
-                                <td className="px-3 py-4">
-                                  <div className="text-sm font-medium text-gray-900 truncate" title={order.partyName}>
+                                <td className="px-3 py-4 w-52">
+                                  <div className="text-sm font-medium text-gray-900" title={order.partyName}>
                                     {order.partyName}
                                   </div>
                                   <div className="text-xs text-gray-500">{order.partyId}</div>
+                                </td>
+                                <td className="px-3 py-4 w-52">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {order.outstanding}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-4 w-52">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {order.collection.amount}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{order.collection.paymentMethod}</div>
                                 </td>
                                 <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
                                   {new Date(order.createdAt).toLocaleDateString("en-IN", {

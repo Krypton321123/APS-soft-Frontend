@@ -7,6 +7,8 @@ import Collections from './pages/Collections'
 import Attendance from './pages/Attendance'
 import Images from './pages/Images'
 import Rate from './pages/Rate'
+import Location from './pages/Location'
+import "leaflet/dist/leaflet.css"
 
 function App() {
   return (
@@ -18,6 +20,7 @@ function App() {
         <Route path='/attendance'  element={<ProtectedRoute><Sidebar><Attendance /></Sidebar></ProtectedRoute>} />
         <Route path='/images' element={<ProtectedRoute><Sidebar><Images /></Sidebar></ProtectedRoute>} />
         <Route path='/ratelist' element={<ProtectedRoute><Sidebar><Rate /></Sidebar></ProtectedRoute>} />
+        <Route path='/location' element={<ProtectedRoute><Sidebar><Location /></Sidebar></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/orders" replace />} />
       </Routes>
     </Router>
