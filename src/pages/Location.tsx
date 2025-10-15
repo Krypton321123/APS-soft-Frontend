@@ -156,7 +156,7 @@ export default function Location() {
         style={{ height: '50vh', width: '100%' }}
         >
         <TileLayer
-        url="http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
+        url="http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
         attribution="&copy; Google Maps"
         />
       <Polyline positions={coordinates} color="blue" weight={2} />
