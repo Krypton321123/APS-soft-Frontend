@@ -156,10 +156,10 @@ export default function Location() {
         style={{ height: '50vh', width: '100%' }}
         >
         <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution="&copy; OpenStreetMap contributors"
+        url="http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
+        attribution="&copy; Google Maps"
         />
-      <Polyline positions={coordinates} color="blue" weight={4} />
+      <Polyline positions={coordinates} color="blue" weight={2} />
 
       {coordinates.map((item) => {
         return <Marker position={item}/>

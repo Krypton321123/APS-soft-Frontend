@@ -169,7 +169,7 @@ const Attendance: React.FC = () => {
                     key={`day-${dayIndex}`}
                     className={`p-2 text-center border-l border-t border-blue-200 ${
                       status === 'present' ? 'text-green-600' :
-                      status === 'A' ? 'text-red-600' : 'text-blue-600'
+                      status === '-' ? 'text-black' : 'text-blue-600'
                     }`}
                   >
                     {status}
