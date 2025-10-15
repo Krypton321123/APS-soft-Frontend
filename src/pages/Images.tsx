@@ -208,6 +208,9 @@ function Images() {
           <thead className=''>
                 <tr className='bg-gray-100'>
                   <th className='text-gray-500 font-normal tracking-normal p-4 px-10'>
+                    S. No.
+                  </th>
+                  <th className='text-gray-500 font-normal tracking-normal p-4 px-10'>
                     Image
                   </th>
                   <th className='text-gray-500 font-normal tracking-normal p-4'>
@@ -245,7 +248,9 @@ function Images() {
               aria-label={`Image ${index + 1}`}
             > */}
   
-               
+                  <td className='px-4 py-2 w-24 h-24' onClick={() => setSelectedImage(img)}>
+                    {index + 1}
+                  </td>
                   <td className='px-4 py-2 w-24 h-24' onClick={() => setSelectedImage(img)}>
                     <img 
                     src={img.profileImageUrl}/>
