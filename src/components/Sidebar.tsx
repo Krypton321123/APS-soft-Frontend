@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
-import { FaBook, FaFileImage, FaMoneyBillWave, FaUser } from 'react-icons/fa'
+import React, { useState } from 'react';
+import { FaBook, FaFileImage, FaMoneyBillWave, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { IoMdExit } from "react-icons/io";
-import { CiBadgeDollar, CiLocationArrow1 } from 'react-icons/ci'
-import { motion } from 'motion/react'
+import { CiBadgeDollar, CiLocationArrow1 } from 'react-icons/ci';
+import { motion } from 'motion/react';
 
 function Sidebar({ children }: {children: React.ReactNode}) {
 
@@ -44,9 +44,9 @@ function Sidebar({ children }: {children: React.ReactNode}) {
             {/* Navigation */}
             <nav className='mt-8 px-4'>
                 <div className='space-y-2'>
-                    {sidebarContent.map((item) => (
-                        <div onClick={() => {navigate(item.path)}}>
-                            <motion.p layout className={`text-lg flex items-center gap-2 justfiy-center hover:bg-gray-200 rounded-lg w-full h-8 ${isOpen ? 'p-1' : 'p-1'} cursor-pointer`}>{item.icon} {isOpen && <p className='text-sm whitespace-nowrap'>{item.name}</p>}</motion.p>
+                    {sidebarContent.map((item, idx) => (
+                        <div key={idx} onClick={() => {navigate(item.path)}}>
+                            <motion.p layout className={`text-lg flex items-center gap-2 justfiy-center hover:bg-gray-200 rounded-lg w-full h-8 ${isOpen ? 'p-1' : 'p-1'} cursor-pointer`}>{item.icon} {isOpen && <span className='text-sm whitespace-nowrap'>{item.name}</span>}</motion.p>
                         </div>
                     ))}
                 </div>

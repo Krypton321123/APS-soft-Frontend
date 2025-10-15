@@ -798,7 +798,7 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
 
       {/* Orders Panel */}
       <div className="flex-1 p-6 flex flex-col min-h-0 min-w-0">
-        <div className="mb-6">
+        <div className="mb-15 ">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Orders</h2>
 
           {/* Search Bar */}
@@ -865,7 +865,7 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
                 <div className="h-full overflow-auto">
                   <div className="overflow-x-auto">
                     <table className="w-full divide-y divide-gray-200" style={{ minWidth: "1000px" }}>
-                      <thead className="bg-gray-50 sticky top-0 z-10">
+                      <thead className="bg-gray-50 fixed top-43" >
                         <tr>
                           <th
                             className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
