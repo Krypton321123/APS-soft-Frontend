@@ -234,7 +234,7 @@ function Images() {
           {images.map((img: any, index: number) => { 
             let dateForDisplay = new Date(img.createdAt);
             const year = dateForDisplay.getFullYear(); 
-            const month = dateForDisplay.getMonth()
+            const month = dateForDisplay.getMonth() + 1; 
             const dd = dateForDisplay.getDate(); 
             const formattedDate = `${dd}-${month}-${year}`
     
