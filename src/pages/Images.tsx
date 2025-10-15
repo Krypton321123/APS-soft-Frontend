@@ -281,6 +281,7 @@ function Images() {
             <td className='px-4 py-2 text-center'>-</td>
             <td className='px-4 py-2 text-center'>-</td>
             <td className='px-4 py-2 text-center'>-</td>
+            <td className='px-4 py-2 text-center'>-</td>
             <td className='px-4 py-2 text-center'>
               {totals?.totalOrderQuantity}
             </td>
