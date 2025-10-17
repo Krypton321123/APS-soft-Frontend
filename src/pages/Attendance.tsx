@@ -133,7 +133,7 @@ const Attendance: React.FC = () => {
       </div>
 
       {/* Attendance Grid */}
-      <div className="overflow-x-auto border border-blue-500 rounded-md">
+      <div className="overflow-x-auto overflow-y-auto border border-blue-500 rounded-md">
         <table className="min-w-full">
           <thead>
             <tr className="bg-blue-500 text-white">
