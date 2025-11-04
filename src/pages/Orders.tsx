@@ -1,12 +1,23 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import React from "react"
 import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaTimes } from "react-icons/fa"
 import { CSVLink } from 'react-csv'
 import { motion } from 'motion/react'
-import { IoIosOpen } from "react-icons/io";
+import { IoIosOpen } from "react-icons/io"
+import {
+  useReactTable,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  getExpandedRowModel,
+  getGroupedRowModel,
+  flexRender,
+} from '@tanstack/react-table'
+import type { ColumnDef } from "@tanstack/react-table"
+import { ChevronUp } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL
-
 
 interface User {
   user_id: number
@@ -45,7 +56,8 @@ interface Order {
   orderItems: OrderItem[]
   outstanding: number
   collection: {
-    amount: number, paymentMethod: string
+    amount: number
+    paymentMethod: string
   }
 }
 
@@ -67,29 +79,30 @@ interface ApiResponse<T> {
   success: boolean
 }
 
-
-
 function Orders() {
   const [users, setUsers] = useState<User[]>([])
+  const [expanded, setExpanded] = useState({})
   const [orders, setOrders] = useState<Order[]>([])
   const [locationTree, setLocationTree] = useState<LocationNode[]>([])
   const [loading, setLoading] = useState(false)
   const [ordersLoading, setOrdersLoading] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [globalFilter, setGlobalFilter] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
-  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [rowSelection, setRowSelection] = useState({})
   const today = new Date().toISOString().split('T')[0]
   const [fromDate, setFromDate] = useState<string>(today)
   const [toDate, setToDate] = useState<string>(today)
-  const [totalConsumerQuantity, setTotalConsumerQuantity] = useState<number>(0);
-  const [totalBulkQuantity, setTotalBulkQuantity] = useState<number>(0); 
-  const [isSelectingDate, setIsSelectingDate] = useState(false)
-  const [isFilterOpen, setIsFilterOpen] = useState(true) 
+  const [totalConsumerQuantity, setTotalConsumerQuantity] = useState<number>(0)
+  const [totalBulkQuantity, setTotalBulkQuantity] = useState<number>(0)
+  const [isFilterOpen, setIsFilterOpen] = useState(true)
+  const [grouping, setGrouping] = useState<string[]>([])
+  const [editedValues, setEditedValues] = useState<Record<string, {
+    consumerQuantity: number
+    bulkQuantity: number
+    consumerRate: number
+    bulkRate: number
+  }>>({})
 
-  console.log(users)
-
-  // Fetch users and build location tree
   useEffect(() => {
     fetchUsers()
   }, [])
@@ -103,7 +116,6 @@ function Orders() {
         headers: {
           "Content-Type": "application/json",
         },
-
       })
 
       if (!response.ok) {
@@ -122,55 +134,10 @@ function Orders() {
       console.error("Error fetching users:", error)
       setError(error instanceof Error ? error.message : "Failed to fetch users")
 
-      // Fallback to mock data for demo purposes
       const mockUsers: User[] = [
         { user_id: 1, username: "emp1", stnm: "ASSAM", stcd: "AS", untnm: "GUWAHATI", untcd: "GUW", usrnm: "John Doe" },
-        {
-          user_id: 2,
-          username: "emp2",
-          stnm: "ASSAM",
-          stcd: "AS",
-          untnm: "SILCHAR",
-          untcd: "SIL",
-          usrnm: "Jane Smith",
-        },
+        { user_id: 2, username: "emp2", stnm: "ASSAM", stcd: "AS", untnm: "SILCHAR", untcd: "SIL", usrnm: "Jane Smith" },
         { user_id: 3, username: "emp3", stnm: "BIHAR", stcd: "BR", untnm: "PATNA", untcd: "PAT", usrnm: "Bob Wilson" },
-        {
-          user_id: 4,
-          username: "emp4",
-          stnm: "BIHAR",
-          stcd: "BR",
-          untnm: "KOCHAS",
-          untcd: "KOC",
-          usrnm: "Alice Brown",
-        },
-        {
-          user_id: 5,
-          username: "emp5",
-          stnm: "BIHAR",
-          stcd: "BR",
-          untnm: "MUZAFFAR PUR",
-          untcd: "MUZ",
-          usrnm: "Charlie Davis",
-        },
-        {
-          user_id: 6,
-          username: "emp6",
-          stnm: "DELHI",
-          stcd: "DL",
-          untnm: "DELHI",
-          untcd: "DEL",
-          usrnm: "Eva Martinez",
-        },
-        {
-          user_id: 7,
-          username: "emp7",
-          stnm: "HIMANCHAL PRADESH",
-          stcd: "HP",
-          untnm: "DAMTAL",
-          untcd: "DAM",
-          usrnm: "Frank Miller",
-        },
       ]
       setUsers(mockUsers)
       buildLocationTree(mockUsers)
@@ -179,58 +146,98 @@ function Orders() {
     }
   }
 
-  const buildLocationTree = (users: User[]) => {
-    const stateMap = new Map<string, LocationNode>()
+const buildLocationTree = (users: User[]) => {
+  const userType = localStorage.getItem('userType') || 'ADMIN'
+  const allowedLocations = localStorage.getItem('allowedLocations') || '[]'
+  
+  let allowedLocationsArray: string[] = []
+  try {
+    allowedLocationsArray = JSON.parse(allowedLocations)
+    if (!Array.isArray(allowedLocationsArray)) {
+      allowedLocationsArray = []
+    }
+  } catch (error) {
+    console.error('Error parsing allowedLocations:', error)
+    allowedLocationsArray = []
+  }
 
-    users.forEach((user) => {
-      // Skip users with empty state or unit names
-      if (!user.stnm || !user.untnm) return
+  const isLocationAllowed = (locationName: string, locationType: 'state' | 'depot' | 'user'): boolean => {
+    if (userType === 'ADMIN') return true
+    if (allowedLocationsArray.length === 0) return false
 
-      // Get or create state
-      if (!stateMap.has(user.stnm)) {
-        stateMap.set(user.stnm, {
-          name: user.stnm,
-          code: user.stcd,
-          type: "state",
-          children: [],
-          isSelected: false,
-          isIndeterminate: false,
-          isExpanded: false,
-        })
+    return allowedLocationsArray.some(loc => 
+      loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
+    )
+  }
+
+  const stateMap = new Map<string, LocationNode>()
+
+  users.forEach((user) => {
+    if (!user.stnm || !user.untnm) return
+
+    if (userType === 'OPERATOR') {
+      const isUserAllowed = isLocationAllowed(user.usrnm, 'user') || 
+                           isLocationAllowed(user.username, 'user')
+      const isDepotAllowed = isLocationAllowed(user.untnm, 'depot')
+      const isStateAllowed = isLocationAllowed(user.stnm, 'state')
+      
+
+      if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) {
+        return
       }
+    }
 
-      const state = stateMap.get(user.stnm)!
-
-      // Get or create depot
-      let depot = state.children?.find((d) => d.name === user.untnm)
-      if (!depot) {
-        depot = {
-          name: user.untnm,
-          code: user.untcd,
-          type: "depot",
-          children: [],
-          isSelected: false,
-          isIndeterminate: false,
-          isExpanded: false,
-        }
-        state.children?.push(depot)
-      }
-
-      // Add user
-      depot.children?.push({
-        name: user.usrnm,
-        code: user.username,
-        type: "user",
-        userId: user.user_id,
+    if (!stateMap.has(user.stnm)) {
+      stateMap.set(user.stnm, {
+        name: user.stnm,
+        code: user.stcd,
+        type: "state",
+        children: [],
         isSelected: false,
         isIndeterminate: false,
         isExpanded: false,
       })
-    })
+    }
 
-    const tree = Array.from(stateMap.values()).sort((a, b) => a.name.localeCompare(b.name))
-    setLocationTree(tree)
-  }
+    const state = stateMap.get(user.stnm)!
+    let depot = state.children?.find((d) => d.name === user.untnm)
+    
+    if (!depot) {
+      depot = {
+        name: user.untnm,
+        code: user.untcd,
+        type: "depot",
+        children: [],
+        isSelected: false,
+        isIndeterminate: false,
+        isExpanded: false,
+      }
+      state.children?.push(depot)
+    }
+
+    depot.children?.push({
+      name: user.usrnm,
+      code: user.username,
+      type: "user",
+      userId: user.user_id,
+      isSelected: false,
+      isIndeterminate: false,
+      isExpanded: false,
+    })
+  })
+
+  // Filter out empty states and depots
+  const tree = Array.from(stateMap.values())
+    .filter(state => state.children && state.children.length > 0)
+    .map(state => ({
+      ...state,
+      children: state.children?.filter(depot => depot.children && depot.children.length > 0)
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  setLocationTree(tree)
+}
+
 
   const toggleExpand = (path: number[]) => {
     setLocationTree((prev) => {
@@ -259,11 +266,9 @@ function Orders() {
         const node = nodes[currentPath[depth]]
 
         if (depth === currentPath.length - 1) {
-          // Toggle this node
           node.isSelected = !node.isSelected
           node.isIndeterminate = false
 
-          // Update all children
           const updateChildren = (n: LocationNode, selected: boolean) => {
             n.isSelected = selected
             n.isIndeterminate = false
@@ -279,7 +284,6 @@ function Orders() {
           toggleNode(node.children!, currentPath, depth + 1)
         }
 
-        // Update parent states
         if (node.children) {
           const selectedChildren = node.children.filter((c) => c.isSelected).length
           const indeterminateChildren = node.children.filter((c) => c.isIndeterminate).length
@@ -302,7 +306,6 @@ function Orders() {
     })
   }
 
-  // Get selected items for API call
   const getSelectedItems = () => {
     const states: string[] = []
     const depots: string[] = []
@@ -323,7 +326,6 @@ function Orders() {
     return { states, depots, employees }
   }
 
-  // Fetch orders based on selection
   useEffect(() => {
     const { states, depots, employees } = getSelectedItems()
     if (states.length > 0 || depots.length > 0 || employees.length > 0) {
@@ -338,7 +340,6 @@ function Orders() {
     setError(null)
 
     try {
-      // Build query parameters
       const params = new URLSearchParams()
       if (states.length > 0) params.set("states", states.join(","))
       if (depots.length > 0) params.set("depots", depots.join(","))
@@ -368,61 +369,24 @@ function Orders() {
       console.error("Error fetching orders:", error)
       setError(error instanceof Error ? error.message : "Failed to fetch orders")
 
-      // Fallback to mock data for demo purposes
       const mockOrders: Order[] = [
         {
           order_id: "1",
           partyId: "P001",
           partyName: "ABC Company",
           empId: "emp1",
-          empName: "emp1", 
+          empName: "emp1",
           totalAmount: 15000,
           discountAmount: 500,
           paymentMode: "cash",
           status: "completed",
           createdAt: "2025-05-30T10:30:00Z",
-          outstanding: 200, 
-          collection: {
-            amount: 200, paymentMethod: "Cash"
-          },
+          outstanding: 200,
+          consumerRate: 100,
+          bulkRate: 80,
+          collection: { amount: 200, paymentMethod: "Cash" },
           orderItems: [
-            {
-              id: "1",
-              itemCode: "IT001",
-              itemName: "Product A",
-              quantity: 10,
-              rate: 1500,
-              amount: 15000,
-              packType: "box",
-            },
-          ],
-        },
-        {
-          order_id: "2",
-          partyId: "P002",
-          partyName: "XYZ Corp",
-          empId: "emp3",
-          empName: "emp3",
-          totalAmount: 25000,
-          discountAmount: 1000,
-          paymentMode: "credit",
-          status: "pending",
-          creditDays: 30,
-          createdAt: "2025-05-30T14:15:00Z",
-          outstanding: 200, 
-          collection: {
-            amount: 200, paymentMethod: "Cash"
-          },
-          orderItems: [
-            {
-              id: "2",
-              itemCode: "IT002",
-              itemName: "Product B",
-              quantity: 5,
-              rate: 5000,
-              amount: 25000,
-              packType: "carton",
-            },
+            { id: "1", itemCode: "IT001", itemName: "Product A", quantity: 10, rate: 1500, amount: 15000, packType: "Consumer Pack" },
           ],
         },
       ]
@@ -431,135 +395,6 @@ function Orders() {
       setOrdersLoading(false)
     }
   }
-
-  // Order selection and expansion handlers
-  const handleOrderSelection = (orderId: string) => {
-    setSelectedOrders((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(orderId)) {
-        newSet.delete(orderId)
-      } else {
-        newSet.add(orderId)
-      }
-      return newSet
-    })
-
-    const order = orders.find((item) => item.order_id === orderId); 
-
-    if (selectedOrders.has(order?.order_id!)) {
-      setTotalConsumerQuantity((prev: number) => {
-        const consumerQuantity = order?.orderItems.map((item) => item.packType === "Consumer Pack" ? item.quantity : 0).reduce((acc: number, curr: number) => {return acc + curr}, 0);
-
-        if (consumerQuantity !== undefined) {
-          return prev - consumerQuantity
-        } else {
-          return prev
-        }
-      })
-
-      setTotalBulkQuantity((prev: number) => {
-         const consumerQuantity = order?.orderItems.map((item) => item.packType === "Bulk Pack" ? item.quantity : 0).reduce((acc: number, curr: number) => {return acc + curr}, 0);
-        if (consumerQuantity !== undefined) {
-          return prev - consumerQuantity
-        } else {
-          return prev
-        }
-      })
-    } else {
-        setTotalConsumerQuantity((prev: number) => {
-        const consumerQuantity = order?.orderItems.map((item) => item.packType === "Consumer Pack" ? item.quantity : 0).reduce((acc: number, curr: number) => {return acc + curr}, 0);
-        if (consumerQuantity !== undefined) {
-          return prev + consumerQuantity
-        } else {
-          return prev
-        }
-      })
-
-      setTotalBulkQuantity((prev: number) => {
-        const bulkQuantity = order?.orderItems.map((item) => item.packType === "Bulk Pack" ? item.quantity : 0).reduce((acc: number, curr: number) => {return acc + curr}, 0 ); 
-
-        if (bulkQuantity !== undefined) {
-          return prev + bulkQuantity
-        } else {
-          return prev 
-        }
-      })
-    }
-    
-    
-  }
-
-  const handleOrderExpansion = (orderId: string) => {
-    setExpandedOrders((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(orderId)) {
-        newSet.delete(orderId)
-      } else {
-        newSet.add(orderId)
-      }
-      return newSet
-    })
-  }
-
-  const handleSelectAllLocations = () => {
-  setLocationTree((prev) => {
-    const newTree = JSON.parse(JSON.stringify(prev))
-    
-    // Check if all nodes are selected
-    const allSelected = isAllLocationsSelected(newTree)
-    
-    // Toggle all nodes
-    const toggleAllNodes = (nodes: LocationNode[], selected: boolean) => {
-      nodes.forEach((node) => {
-        node.isSelected = selected
-        node.isIndeterminate = false
-        if (node.children) {
-          toggleAllNodes(node.children, selected)
-        }
-      })
-    }
-    
-    toggleAllNodes(newTree, !allSelected)
-    return newTree
-  })
-}
-
-// 2. Add this helper function to check if all locations are selected:
-
-const isAllLocationsSelected = (tree: LocationNode[]): boolean => {
-  const checkAllSelected = (nodes: LocationNode[]): boolean => {
-    return nodes.every((node) => {
-      if (node.children) {
-        return node.isSelected && checkAllSelected(node.children)
-      }
-      return node.isSelected
-    })
-  }
-  return checkAllSelected(tree)
-}
-
-// 3. Add this helper function to check if any location is selected:
-
-const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
-  const checkAnySelected = (nodes: LocationNode[]): boolean => {
-    return nodes.some((node) => {
-      if (node.children) {
-        return node.isSelected || node.isIndeterminate || checkAnySelected(node.children)
-      }
-      return node.isSelected
-    })
-  }
-  return checkAnySelected(tree)
-}
-
-  // Calculate quantities based on pack type
-  // State for edited values
-  const [editedValues, setEditedValues] = useState<Record<string, {
-    consumerQuantity: number;
-    bulkQuantity: number;
-    consumerRate: number;
-    bulkRate: number
-  }>>({})
 
   const handleEditChange = (orderId: string, field: string, value: number) => {
     setEditedValues(prev => ({
@@ -590,27 +425,55 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
     return { consumerQuantity, bulkQuantity, totalQuantity }
   }
 
-  const handleSelectAllOrders = () => {
+  const handleSelectAllLocations = () => {
+    setLocationTree((prev) => {
+      const newTree = JSON.parse(JSON.stringify(prev))
+      const allSelected = isAllLocationsSelected(newTree)
+      
+      const toggleAllNodes = (nodes: LocationNode[], selected: boolean) => {
+        nodes.forEach((node) => {
+          node.isSelected = selected
+          node.isIndeterminate = false
+          if (node.children) {
+            toggleAllNodes(node.children, selected)
+          }
+        })
+      }
+      
+      toggleAllNodes(newTree, !allSelected)
+      return newTree
+    })
+  }
 
-    console.log(selectedOrders)
-    if (selectedOrders.size === filteredOrders.length) {
-      setSelectedOrders(new Set())
-      setTotalConsumerQuantity(0); 
-    } else {
-      let consQuant = 0; 
-      orders.map((item) => item.orderItems.map((item) => item.packType === "Consumer Pack" ? item.quantity : 0)).map((item) => item.map((value: number) => {consQuant += value; return 0; }))
-   
-      setTotalConsumerQuantity(consQuant)
-      setSelectedOrders(new Set(filteredOrders.map((order) => order.order_id)))
+  const isAllLocationsSelected = (tree: LocationNode[]): boolean => {
+    const checkAllSelected = (nodes: LocationNode[]): boolean => {
+      return nodes.every((node) => {
+        if (node.children) {
+          return node.isSelected && checkAllSelected(node.children)
+        }
+        return node.isSelected
+      })
     }
+    return checkAllSelected(tree)
+  }
 
-
+  const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
+    const checkAnySelected = (nodes: LocationNode[]): boolean => {
+      return nodes.some((node) => {
+        if (node.children) {
+          return node.isSelected || node.isIndeterminate || checkAnySelected(node.children)
+        }
+        return node.isSelected
+      })
+    }
+    return checkAnySelected(tree)
   }
 
   const handleAcceptOrders = async () => {
-    const selectedOrdersList = Array.from(selectedOrders).map(orderId => ({
-      orderId,
-      ...editedValues[orderId]
+    const selectedRows = table.getSelectedRowModel().rows
+    const selectedOrdersList = selectedRows.map(row => ({
+      orderId: row.original.order_id,
+      ...editedValues[row.original.order_id]
     }))
 
     console.log("Sending edited values:", selectedOrdersList)
@@ -627,28 +490,22 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
     })
 
     if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    const result = await response.json();
+    const result = await response.json()
 
     if (result.status === 200) {
       console.log('orders accepted with edits')
-      
     }
 
-    setSelectedOrders(new Set())
+    setRowSelection({})
   }
 
   const handleRejectOrders = () => {
-    const selectedOrdersList = Array.from(selectedOrders)
-    console.log("Rejecting orders:", selectedOrdersList)
-    console.log(
-      "Selected order details:",
-      orders.filter((order) => selectedOrders.has(order.order_id)),
-    )
-    // Clear selection after action
-    setSelectedOrders(new Set())
+    const selectedRows = table.getSelectedRowModel().rows
+    console.log("Rejecting orders:", selectedRows.map(row => row.original.order_id))
+    setRowSelection({})
   }
 
   const renderLocationNode = (node: LocationNode, path: number[], depth = 0) => {
@@ -697,108 +554,384 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
     )
   }
 
-  const filteredOrders = orders.filter(
-    (order) =>
-      order.partyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.partyId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.empId.toLowerCase().includes(searchTerm.toLowerCase()),
+  const columns = useMemo<ColumnDef<Order>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <input
+            type="checkbox"
+            checked={table.getIsAllRowsSelected()}
+            indeterminate={table.getIsSomeRowsSelected()}
+            onChange={table.getToggleAllRowsSelectedHandler()}
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+          />
+        ),
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            checked={row.getIsSelected()}
+            onChange={row.getToggleSelectedHandler()}
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+          />
+        ),
+        size: 40,
+      },
+      {
+        id: 'expander',
+        header: 'Expand',
+        cell: ({ row }) => (
+          <button
+            onClick={row.getToggleExpandedHandler()}
+            className="p-1 hover:bg-gray-200 rounded transition-colors"
+          >
+            {row.getIsExpanded() ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+          </button>
+        ),
+        size: 50,
+      },
+      {
+        accessorKey: 'empName',
+        header: 'Employee',
+        cell: info => <span className="text-sm text-gray-900 font-light">{info.getValue() as string}</span>,
+        size: 80,
+      },
+      {
+        accessorKey: 'partyName',
+        header: 'Party Name',
+        cell: ({ row }) => (
+          <div>
+            <div className="text-sm font-medium text-gray-900 w-72" title={row.original.partyName}>
+              {row.original.partyName}
+            </div>
+            <div className="text-xs text-gray-500">{row.original.partyId}</div>
+          </div>
+        ),
+        minSize: 375,
+      },
+      {
+        accessorKey: 'outstanding',
+        header: 'Outstanding',
+        cell: info => <div className="text-sm font-medium text-gray-900">{info.getValue() as number}</div>,
+        minSize: 100,
+      },
+      {
+        accessorKey: 'collection',
+        header: 'Collection',
+        cell: ({ row }) => (
+          <div>
+            <div className="text-sm font-medium text-gray-900">{row.original.collection.amount}</div>
+            <div className="text-xs text-gray-500">{row.original.collection.paymentMethod}</div>
+          </div>
+        ),
+        minSize: 75,
+      },
+      {
+        accessorKey: 'createdAt',
+        header: ({ column }) => (
+          <div 
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={column.getToggleSortingHandler()}
+          >
+            Date
+            {column.getIsSorted() && (
+              <span>
+                {column.getIsSorted() === 'asc' ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <FaChevronDown className="w-4 h-4" />
+                )}
+              </span>
+            )}
+          </div>
+        ),
+        cell: info => (
+          <span className="text-sm text-gray-500">
+            {new Date(info.getValue() as string).toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            })}
+          </span>
+        ),
+        size: 100,
+      },
+      {
+        id: 'bulkQuantity',
+        header: 'Bulk Qty',
+        cell: ({ row }) => {
+          const { bulkQuantity } = calculateQuantities(row.original.orderItems)
+          return (
+            <input
+              type="number"
+              value={editedValues[row.original.order_id]?.bulkQuantity ?? bulkQuantity}
+              onChange={(e) => handleEditChange(row.original.order_id, 'bulkQuantity', Number(e.target.value))}
+              className="w-12 text-center border rounded"
+            />
+          )
+        },
+        size: 80,
+      },
+      {
+        id: 'consumerQuantity',
+        header: 'Consumer Qty',
+        cell: ({ row }) => {
+          const { consumerQuantity } = calculateQuantities(row.original.orderItems)
+          return (
+            <input
+              type="number"
+              value={editedValues[row.original.order_id]?.consumerQuantity ?? consumerQuantity}
+              onChange={(e) => handleEditChange(row.original.order_id, 'consumerQuantity', Number(e.target.value))}
+              className="w-12 text-center border rounded"
+            />
+          )
+        },
+        size: 90,
+      },
+      {
+        id: 'totalQuantity',
+        header: 'Total Qty',
+        accessorFn: row => calculateQuantities(row.orderItems).totalQuantity,
+        cell: ({ getValue }) => (
+          <span className="text-sm font-medium text-gray-900">{getValue() as number}</span>
+        ),
+        size: 80,
+         aggregationFn: 'sum', 
+          aggregatedCell: ({ getValue }) => {
+            console.log(getValue())
+            return <span className="text-sm font-bold text-blue-600">
+              {Math.round(getValue() as number)}
+            </span>
+          },
+      },
+      {
+        accessorKey: 'consumerRate',
+        header: 'Consumer Rate',
+        cell: ({ row }) => (
+          <input
+            type="number"
+            value={editedValues[row.original.order_id]?.consumerRate ?? (row.original.consumerRate || 0)}
+            onChange={(e) => handleEditChange(row.original.order_id, 'consumerRate', Number(e.target.value))}
+            className="w-12 text-right border rounded"
+          />
+        ),
+        size: 100,
+      },
+      {
+        accessorKey: 'bulkRate',
+        header: 'Bulk Rate',
+        cell: ({ row }) => (
+          <input
+            type="number"
+            value={editedValues[row.original.order_id]?.bulkRate ?? (row.original.bulkRate || 3)}
+            onChange={(e) => handleEditChange(row.original.order_id, 'bulkRate', Number(e.target.value))}
+            className="w-12 text-right border rounded"
+          />
+        ),
+        size: 90,
+      },
+      {
+        accessorKey: 'discountAmount',
+        header: 'Discount',
+        cell: info => (
+          <span className="text-sm text-gray-900">
+            ₹{Number(info.getValue() || 0).toLocaleString("en-IN")}
+          </span>
+        ),
+        size: 80,
+      },
+      {
+        accessorKey: 'totalAmount',
+        accessorFn: row => Number(row.totalAmount),
+        header: ({ column }) => (
+          <div 
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={column.getToggleSortingHandler()}
+          >
+            Total Amount
+            {column.getIsSorted() && (
+              <span>
+                {column.getIsSorted() === 'asc' ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <FaChevronDown className="w-4 h-4" />
+                )}
+              </span>
+            )}
+          </div>
+        ),
+        
+        cell: ({getValue}) => (
+          <span className="text-sm font-semibold text-gray-900">
+            ₹{Number(getValue())}
+          </span>
+        ),
+        aggregationFn: 'sum', 
+        aggregatedCell: ({ getValue }) => ( 
+          <span className="text-sm font-bold text-blue-600">
+            Total: ₹{Math.round(getValue() as number).toLocaleString("en-IN")}
+          </span>
+        ),
+        size: 110,
+      },
+      {
+        accessorKey: 'paymentMode',
+        header: 'Payment',
+        cell: info => (
+          <span
+            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+              info.getValue() === "cash"
+                ? "bg-green-100 text-green-800"
+                : info.getValue() === "credit"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-gray-100 text-gray-800"
+            }`}
+          >
+            {info.getValue() as string}
+          </span>
+        ),
+        size: 100,
+      },
+    ],
+    [editedValues]
   )
 
-  const isAllSelected = filteredOrders.length > 0 && selectedOrders.size === filteredOrders.length
-  const isIndeterminate = selectedOrders.size > 0 && selectedOrders.size < filteredOrders.length
+  const table = useReactTable({
+    data: orders,
+    columns,
+    state: {
+      globalFilter,
+      rowSelection,
+      grouping, 
+      expanded
+    },
+    enableRowSelection: true,
+    onRowSelectionChange: setRowSelection,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onGroupingChange: setGrouping,
+    getExpandedRowModel: getExpandedRowModel(),
+    onExpandedChange: setExpanded,
+    getGroupedRowModel: getGroupedRowModel(),
+    getRowCanExpand: () => true,
+    initialState: {
+      
+    },
+  })
+
+  useEffect(() => {
+    const selectedRows = table.getSelectedRowModel().rows
+    let consTotal = 0
+    let bulkTotal = 0
+    
+    selectedRows.forEach(row => {
+      const { consumerQuantity, bulkQuantity } = calculateQuantities(row.original.orderItems)
+      consTotal += consumerQuantity
+      bulkTotal += bulkQuantity
+    })
+    
+    setTotalConsumerQuantity(consTotal)
+    setTotalBulkQuantity(bulkTotal)
+  }, [rowSelection, orders])
+
+  const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original)
 
   return (
     <div className="flex h-full bg-gray-50 w-full max-w-full overflow-hidden">
-     
       <motion.div
         initial={{width: '20rem'}}
         animate={{width: isFilterOpen ? '20rem' : '2.5rem'}}
-        whileHover={{width: '20rem'}}
         transition={{duration: 0.3, ease: 'easeInOut'}}
-        onHoverStart={() => {setIsFilterOpen(true)}}
-        onHoverEnd={() => {if (!isSelectingDate) setIsFilterOpen(false)}}
-        className=" bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0"
+        className="border-r border-gray-200 overflow-y-auto flex-shrink-0"
         style={{ width: "clamp(256px, 20vw, 320px)" }}
       >
-      {isFilterOpen ? <div className="p-4">
-    <div className="mb-4">
-      <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
-        <FaFilter className="text-blue-600" />
-        Filter by Location
-      </h3>
-      <div className="text-xs text-gray-500 mb-4">
-        Select states, depots, or specific employees to filter orders
-    </div>
+        {isFilterOpen ? (
+          <div className="p-4">
+            <div className="mb-4">
+              <IoIosOpen 
+                onClick={() => setIsFilterOpen(false)} 
+                className="mt-4 absolute cursor-pointer top-0 hover:bg-gray-200 transition-colors duration-100 ease-in w-8 h-8 left-2 flex justify-center items-center" 
+                size={28}
+              />
+              <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <FaFilter className="text-blue-600" />
+                Filter by Location
+              </h3>
+              <div className="text-xs text-gray-500 mb-4">
+                Select states, depots, or specific employees to filter orders
+              </div>
 
-  {/* Date Range Filter */}
-  <div className="mb-4">
-    <h4 className="text-sm font-medium text-gray-700 mb-2">Date Range</h4>
-    <div className="grid grid-cols-2 gap-2">
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">From</label>
-        <input
-          type="date"
-          value={fromDate}
-          onChange={(e) => {setFromDate(e.target.value); setIsSelectingDate(false)}}
-          className="w-full p-2 border border-gray-300 rounded-lg text-sm"
-          onClick={() => setIsSelectingDate(true)}
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">To</label>
-        <input
-          type="date"
-          value={toDate}
-          onChange={(e) => {setToDate(e.target.value); setIsSelectingDate(false)}}
-          onClick={() => setIsSelectingDate(true)}
-          className="w-full p-2 border border-gray-300 rounded-lg text-sm"
-        />
-      </div>
-    </div>
-  </div>
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Date Range</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">From</label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => {setFromDate(e.target.value); setRowSelection({})}}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">To</label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
 
-  {/* Select All Locations Checkbox */}
-  <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-    <div className="flex items-center gap-2">
-      <input
-        type="checkbox"
-        checked={isAllLocationsSelected(locationTree)}
-        ref={(el) => {
-          if (el) el.indeterminate = !isAllLocationsSelected(locationTree) && isAnyLocationSelected(locationTree)
-        }}
-        onChange={handleSelectAllLocations}
-        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-      />
-      <span className="text-sm font-medium text-gray-700">
-        Select All Locations
-      </span>
-    </div>
-  </div>
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={isAllLocationsSelected(locationTree)}
+                    ref={(el) => {
+                      if (el) el.indeterminate = !isAllLocationsSelected(locationTree) && isAnyLocationSelected(locationTree)
+                    }}
+                    onChange={handleSelectAllLocations}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All Locations
+                  </span>
+                </div>
+              </div>
 
-  {error && (
-    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-      <div className="text-red-800 text-sm font-medium">Connection Error</div>
-      <div className="text-red-600 text-xs mt-1">{error}</div>
-      <div className="text-red-600 text-xs mt-1">Using demo data instead</div>
-    </div>
-  )}
-</div>
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="text-red-800 text-sm font-medium">Connection Error</div>
+                  <div className="text-red-600 text-xs mt-1">{error}</div>
+                  <div className="text-red-600 text-xs mt-1">Using demo data instead</div>
+                </div>
+              )}
+            </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
+            )}
           </div>
         ) : (
-          <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
+          <div onClick={() => setIsFilterOpen(true)} className="w-10 p-0 hover:bg-gray-200 transition-colors cursor-pointer duration-100 flex justify-center items-center ease-in absolute left-3 h-10">
+            <IoIosOpen size={28}/>
+          </div>
         )}
-        </div> : <div className="w-40 p-0 absolute left-4.5 h-20">
-           <IoIosOpen size={28}/>
-          </div>}
       </motion.div>
 
       {/* Orders Panel */}
       <div className="flex-1 p-6 flex flex-col min-h-0 min-w-0">
-        <div className="mb-15 ">
+        <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Orders</h2>
 
           {/* Search Bar */}
@@ -808,53 +941,114 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
               <input
                 type="text"
                 placeholder="Search orders by party name, ID, or employee..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={globalFilter ?? ''}
+                onChange={(e) => setGlobalFilter(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            {orders.length !== 0 && <div className="flex gap-3 justify-center items-center">
-            <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
-              <CSVLink data={
-                [
-                  ["Employee", "Party Name", "Date", "Conumser Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
-                  ...orders.map((item) => {return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "2-digit",
-                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.quantity).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]})
-                ]
-              } filename={`all-order-CSV`}>Download CSV (All orders)</CSVLink>
-              {/* Employee	Party Name	Date	Bulk Qty	Consumer Qty	Total Qty	Consumer Rate	Bulk Rate	Discount	Total Amount	Payment */}
-            </button>
-            {(selectedOrders.size > 0) && <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
-              <CSVLink data={
-                [
-                  ["Employee", "Party Name", "Date", "Conumser Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
-                  ...orders.filter(item => selectedOrders.has(item.order_id)).map((item) => {
-                    return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "2-digit",
-                    }), item.consumerRate, item.bulkRate, item.orderItems.map((item) => item.quantity).reduce((acc, curr) => Number(acc) + Number(curr), 0),item.discountAmount, item.totalAmount, item.paymentMode]
-                    
-                  })
-                ]
-              } filename="selected-order-csv">Download CSV (Selected orders)</CSVLink>
-              {/* Employee	Party Name	Date	Bulk Qty	Consumer Qty	Total Qty	Consumer Rate	Bulk Rate	Discount	Total Amount	Payment */}
-            </button>}
-          </div>}
+            {orders.length !== 0 && (
+              <div className="flex gap-3 justify-center items-center">
+                <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
+                  <CSVLink 
+                    data={[
+                      ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                      ...orders.map((item) => {
+                        const { totalQuantity } = calculateQuantities(item.orderItems)
+                        return [
+                          item.empName, 
+                          item.partyName, 
+                          new Date(item.createdAt).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "2-digit",
+                          }), 
+                          item.consumerRate, 
+                          item.bulkRate, 
+                          totalQuantity,
+                          item.discountAmount, 
+                          item.totalAmount, 
+                          item.paymentMode
+                        ]
+                      })
+                    ]} 
+                    filename={`all-order-CSV`}
+                  >
+                    Download CSV (All orders)
+                  </CSVLink>
+                </button>
+                {selectedOrders.length > 0 && (
+                  <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
+                    <CSVLink 
+                      data={[
+                        ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                        ...selectedOrders.map((item) => {
+                          const { totalQuantity } = calculateQuantities(item.orderItems)
+                          return [
+                            item.empName, 
+                            item.partyName, 
+                            new Date(item.createdAt).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "2-digit",
+                            }), 
+                            item.consumerRate, 
+                            item.bulkRate, 
+                            totalQuantity,
+                            item.discountAmount, 
+                            item.totalAmount, 
+                            item.paymentMode
+                          ]
+                        })
+                      ]} 
+                      filename="selected-order-csv"
+                    >
+                      Download CSV (Selected orders)
+                    </CSVLink>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-          
         </div>
 
-        {/* Orders Table - Flex grow to take remaining space */}
+        <div className="mb-4 flex items-center gap-4 flex-wrap">
+          <span className="text-sm font-medium text-gray-700">Group by:</span>
+          {['empName', 'paymentMode', 'status'].map(col => (
+            <button
+              key={col}
+              onClick={() =>
+                setGrouping(prev =>
+                  prev.includes(col)
+                    ? prev.filter(p => p !== col)
+                    : [...prev, col]
+                )
+              }
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                grouping.includes(col)
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+            >
+              {col === 'empName' ? 'Employee' : col === 'paymentMode' ? 'Payment Mode' : 'Status'}
+            </button>
+          ))}
+          {grouping.length > 0 && (
+            <button
+              onClick={() => setGrouping([])}
+              className="px-3 py-1 rounded-md text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200"
+            >
+              Clear Groups
+            </button>
+          )}
+        </div>
+
+        {/* Orders Table */}
         <div className="flex-1 flex flex-col min-h-0">
           {ordersLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : table.getFilteredRowModel().rows.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-gray-500 text-lg mb-2">No pending orders found</div>
               <div className="text-gray-400 text-sm">Select locations from the filter panel to view orders</div>
@@ -865,304 +1059,174 @@ const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
                 <div className="h-full overflow-auto">
                   <div className="overflow-x-auto">
                     <table className="w-full divide-y divide-gray-200" style={{ minWidth: "1000px" }}>
-                      <thead className="bg-gray-50 fixed top-43" >
-                        <tr>
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "40px" }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isAllSelected}
-                              ref={(el) => {
-                                if (el) el.indeterminate = isIndeterminate
-                              }}
-                              onChange={handleSelectAllOrders}
-                              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                            />
-                          </th>
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "50px" }}
-                          >
-                            Expand
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "100px" }}
-                          >
-                            Employee
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ minWidth: "180px" }}
-                          >
-                            Party Name
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ minWidth: "100px" }}
-                          >
-                            Outstanding
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ minWidth: "100px" }}
-                          >
-                            Collection
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "100px" }}
-                          >
-                            Date
-                          </th>
-                          <th
-                            className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "80px" }}
-                          >
-                            Bulk Qty
-                          </th>
-                          <th
-                            className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "90px" }}
-                          >
-                            Consumer Qty
-                          </th>
-                          <th
-                            className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "80px" }}
-                          >
-                            Total Qty
-                          </th>
-                          <th
-                            className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "100px" }}
-                          >
-                            Consumer Rate
-                          </th>
-                          <th
-                            className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "90px" }}
-                          >
-                            Bulk Rate
-                          </th>
-                          <th
-                            className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "80px" }}
-                          >
-                            Discount
-                          </th>
-                          <th
-                            className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "110px" }}
-                          >
-                            Total Amount
-                          </th>
-                          <th
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: "100px" }}
-                          >
-                            Payment
-                          </th>
-                        </tr>
+                      <thead className="bg-gray-50 sticky top-0 z-10">
+                        {table.getHeaderGroups().map(headerGroup => (
+                          <tr key={headerGroup.id}>
+                            {headerGroup.headers.map(header => (
+                              <th
+                                key={header.id}
+                                className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                style={{ width: header.getSize() }}
+                              >
+                                {header.isPlaceholder ? null : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                              </th>
+                            ))}
+                          </tr>
+                        ))}
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredOrders.map((order) => {
-                          const { consumerQuantity, bulkQuantity, totalQuantity } = calculateQuantities(
-                            order.orderItems,
-                          )
-                          const isExpanded = expandedOrders.has(order.order_id)
-
-                          return (
-                            <React.Fragment key={order.order_id}>
-                              <tr className="hover:bg-gray-50">
-                                <td className="px-2 py-4 whitespace-nowrap">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedOrders.has(order.order_id)}
-                                    onChange={() => handleOrderSelection(order.order_id)}
-                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-4 whitespace-nowrap">
+                        {table.getRowModel().rows.map(row => (
+                          <React.Fragment key={row.id}>
+                            <tr className="hover:bg-gray-50">
+                              {row.getVisibleCells().map(cell => (
+                              <td
+                                key={cell.id}
+                                className="px-3 py-4 whitespace-nowrap text-sm"
+                                style={{
+                                  paddingLeft: cell.getIsGrouped() ? `${row.depth * 2 + 1}rem` : undefined,
+                                }}
+                              >
+                                {cell.getIsGrouped() ? (
                                   <button
-                                    onClick={() => handleOrderExpansion(order.order_id)}
-                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    onClick={row.getToggleExpandedHandler()}
+                                    className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
                                   >
-                                    {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+                                    {row.getIsExpanded() ? (
+                                      <FaChevronDown className="w-4 h-4" />
+                                    ) : (
+                                      <FaChevronRight className="w-4 h-4" />
+                                    )}
+                                    {flexRender(cell.column.columnDef.cell, cell.getContext())} ({row.subRows.length})
                                   </button>
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                                  {order.empName}
-                                </td>
-                                <td className="px-3 py-4 w-52">
-                                  <div className="text-sm font-medium text-gray-900" title={order.partyName}>
-                                    {order.partyName}
-                                  </div>
-                                  <div className="text-xs text-gray-500">{order.partyId}</div>
-                                </td>
-                                <td className="px-3 py-4 w-52">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {order.outstanding}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-4 w-52">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {order.collection.amount}
-                                  </div>
-                                  <div className="text-xs text-gray-500">{order.collection.paymentMethod}</div>
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "2-digit",
-                                  })}
-                                </td>
-                                <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
-                                  <input
-                                    type="number"
-                                    value={editedValues[order.order_id]?.bulkQuantity ?? bulkQuantity}
-                                    onChange={(e) => handleEditChange(order.order_id, 'bulkQuantity', Number(e.target.value))}
-                                    className="w-12 text-center border rounded"
-                                  />
-                                </td>
-                                <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
-                                  <input
-                                    type="number"
-                                    value={editedValues[order.order_id]?.consumerQuantity ?? consumerQuantity}
-                                    onChange={(e) => handleEditChange(order.order_id, 'consumerQuantity', Number(e.target.value))}
-                                    className="w-12 text-center border rounded"
-                                  />
-                                </td>
-                                <td className="px-2 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-center">
-                                  {totalQuantity}
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                  <input
-                                    type="number"
-                                    value={editedValues[order.order_id]?.consumerRate ?? (order.consumerRate || 0)}
-                                    onChange={(e) => handleEditChange(order.order_id, 'consumerRate', Number(e.target.value))}
-                                    className="w-12 text-right border rounded"
-                                  />
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                  <input
-                                    type="number"
-                                    value={editedValues[order.order_id]?.bulkRate ?? (order.bulkRate || 3)}
-                                    onChange={(e) => handleEditChange(order.order_id, 'bulkRate', Number(e.target.value))}
-                                    className="w-12 text-right border rounded"
-                                  />
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                  ₹{Number(order.discountAmount || 0).toLocaleString("en-IN")}
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
-                                  ₹{Number(order.totalAmount).toLocaleString("en-IN")}
-                                </td>
-                                <td className="px-3 py-4 whitespace-nowrap">
-                                  <span
-                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                      order.paymentMode === "cash"
-                                        ? "bg-green-100 text-green-800"
-                                        : order.paymentMode === "credit"
-                                          ? "bg-blue-100 text-blue-800"
-                                          : "bg-gray-100 text-gray-800"
-                                    }`}
-                                  >
-                                    {order.paymentMode}
+                                ) : cell.getIsAggregated() ? (
+                                  <span className="font-medium text-slate-600">
+                                    {flexRender(
+                                      cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell,
+                                      cell.getContext()
+                                    )}
                                   </span>
+                                ) : cell.getIsPlaceholder() ? null : (
+                                  flexRender(cell.column.columnDef.cell, cell.getContext())
+                                )}
+                              </td>
+                            ))}
+                            </tr>
+                            {row.getIsExpanded() && !row.getIsGrouped() && (
+                              <tr>
+                                <td colSpan={columns.length} className="px-6 py-4 bg-gray-50">
+                                  <div className="space-y-3">
+                                    <h4 className="text-sm font-medium text-gray-900 mb-3">Order Items:</h4>
+                                    <div className="overflow-x-auto">
+                                      <table className="min-w-full border border-gray-200 rounded-lg">
+                                        <thead className="bg-white">
+                                          <tr>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Item Code
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Item Name
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Pack Type
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Quantity
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Rate
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
+                                              Amount
+                                            </th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="bg-white">
+                                          {row.original.orderItems.map((item, index) => (
+                                            <tr key={item.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                              <td className="px-4 py-2 text-sm text-gray-900 border-b font-medium">
+                                                {item.itemCode}
+                                              </td>
+                                              <td className="px-4 py-2 text-sm text-gray-900 border-b">
+                                                {item.itemName}
+                                              </td>
+                                              <td className="px-4 py-2 text-sm border-b">
+                                                <span
+                                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                    item.packType === "Consumer Pack"
+                                                      ? "bg-blue-100 text-blue-800"
+                                                      : item.packType === "Bulk Pack"
+                                                        ? "bg-purple-100 text-purple-800"
+                                                        : "bg-gray-100 text-gray-800"
+                                                  }`}
+                                                >
+                                                  {item.packType}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-2 text-sm text-gray-900 border-b text-center">
+                                                {item.quantity}
+                                              </td>
+                                              <td className="px-4 py-2 text-sm text-gray-900 border-b text-right">
+                                                ₹{Number(item.rate).toLocaleString("en-IN")}
+                                              </td>
+                                              <td className="px-4 py-2 text-sm font-medium text-gray-900 border-b text-right">
+                                                ₹{Number(item.amount).toLocaleString("en-IN")}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
-                              {isExpanded && (
-                                <tr>
-                                  <td colSpan={13} className="px-6 py-4 bg-gray-50">
-                                    <div className="space-y-3">
-                                      <h4 className="text-sm font-medium text-gray-900 mb-3">Order Items:</h4>
-                                      <div className="overflow-x-auto">
-                                        <table className="min-w-full border border-gray-200 rounded-lg">
-                                          <thead className="bg-white">
-                                            <tr>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Item Code
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Item Name
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Pack Type
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Quantity
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Rate
-                                              </th>
-                                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border-b">
-                                                Amount
-                                              </th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="bg-white">
-                                            {order.orderItems.map((item, index) => (
-                                              <tr key={item.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                                <td className="px-4 py-2 text-sm text-gray-900 border-b font-medium">
-                                                  {item.itemCode}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm text-gray-900 border-b">
-                                                  {item.itemName}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm border-b">
-                                                  <span
-                                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                      item.packType === "Consumer Pack"
-                                                        ? "bg-blue-100 text-blue-800"
-                                                        : item.packType === "Bulk Pack"
-                                                          ? "bg-purple-100 text-purple-800"
-                                                          : "bg-gray-100 text-gray-800"
-                                                    }`}
-                                                  >
-                                                    {item.packType}
-                                                  </span>
-                                                </td>
-                                                <td className="px-4 py-2 text-sm text-gray-900 border-b text-center">
-                                                  {item.quantity}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm text-gray-900 border-b text-right">
-                                                  ₹{Number(item.rate).toLocaleString("en-IN")}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm font-medium text-gray-900 border-b text-right">
-                                                  ₹{Number(item.amount).toLocaleString("en-IN")}
-                                                </td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          )
-                        })}
+                            )}
+                          </React.Fragment>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons - Fixed at bottom */}
-              {selectedOrders.size > 0 && (
+              {/* Pagination */}
+              <div className="mt-4 flex items-center justify-between bg-white border border-gray-200 rounded-lg p-4">
+                <div className="text-sm text-gray-600">
+                  Showing {table.getRowModel().rows.length} of {table.getFilteredRowModel().rows.length} orders
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
+                    className="px-3 py-1 rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                  </span>
+                  <button
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
+                    className="px-3 py-1 rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {selectedOrders.length > 0 && (
                 <div className="mt-4 bg-white border border-gray-200 rounded-lg p-4 flex-shrink-0">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-600">
-                      {selectedOrders.size} order{selectedOrders.size !== 1 ? "s" : ""} selected
+                      {selectedOrders.length} order{selectedOrders.length !== 1 ? "s" : ""} selected
                     </div>
                     <div className="flex items-center gap-3">
-                      <p>Consumer Quantity: {totalConsumerQuantity}</p>
-                      <p>Bulk Quantity: {totalBulkQuantity}</p>
+                      <p className="text-sm">Consumer Quantity: <span className="font-semibold">{totalConsumerQuantity}</span></p>
+                      <p className="text-sm">Bulk Quantity: <span className="font-semibold">{totalBulkQuantity}</span></p>
                       <button
                         onClick={handleAcceptOrders}
                         className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"

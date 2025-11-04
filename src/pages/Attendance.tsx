@@ -10,6 +10,7 @@ const Attendance: React.FC = () => {
   const [attendanceData, setAttendanceData] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
+ 
   const months = [
   { name: 'January', days: 31 },
   { name: 'February', days: 28 }, 
@@ -25,6 +26,15 @@ const Attendance: React.FC = () => {
   { name: 'December', days: 31 }
 ];
   const years = [2023, 2024, 2025];
+
+  useEffect(() => {
+    const current = new Date(); 
+    const month = current.getMonth(); 
+    const year = current.getFullYear(); 
+
+    setSelectedMonth(months[month])
+    setSelectedYear(year); 
+  }, [])
 
   // Fetch depot names on component mount
   useEffect(() => {

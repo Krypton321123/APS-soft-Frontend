@@ -2,7 +2,9 @@ import { MapContainer, TileLayer, Polyline, Marker } from 'react-leaflet';
 // @ts-ignore
 import { LatLng, LatLngExpression } from 'leaflet';
 import { useEffect, useState } from 'react';
+import L from 'leaflet'
 import axios from 'axios'
+import MapPanner from '../components/MapPanner';
 
 
 export default function Location() {
@@ -13,6 +15,14 @@ export default function Location() {
     const [employee, setEmployee] = useState('');
     const [date, setDate] = useState('')
     
+    const markerIcon = new L.Icon({
+    iconUrl: "/map-marker.jpg", 
+    iconSize: [30, 38],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+    });
+
     const [depotOptions, setDepotOptions] = useState<string[]>([]);
     const [employeeOptions, setEmployeeOptions] = useState<string[]>([]);
     useEffect(() => {
@@ -155,14 +165,16 @@ export default function Location() {
         zoom={15}
         style={{ height: '50vh', width: '100%' }}
         >
+
+            <MapPanner center={center} />
         <TileLayer
         url="http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
         attribution="&copy; Google Maps"
         />
       <Polyline positions={coordinates} color="blue" weight={2} />
 
-      {coordinates.map((item) => {
-        return <Marker position={item}/>
+      {coordinates.map((item, idx) => {
+        return <Marker key={idx} title={idx.toString()} position={item} icon={markerIcon} />
       })}     
     </MapContainer>
     </div>

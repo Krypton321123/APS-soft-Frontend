@@ -10,10 +10,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-
   useEffect(() => {
     const username = localStorage.getItem('username')
-
     if (username) {
       navigate('/orders')
     }
@@ -38,20 +36,27 @@ const Login = () => {
 
       const data = await response.json()
 
-      console.log(data)
-
       if (response.ok) {
-        // Login successful
         console.log('Login successful:', data)
         
         if (data.data) {
-          localStorage.setItem('username', data.data)
+          localStorage.setItem('username', data.data.username)
+          
+          if (data.data.userType) {
+            localStorage.setItem('userType', data.data.userType)
+          }
+          
+          if (data.data.allowedScreens) {
+            localStorage.setItem('allowedScreens', data.data.allowedScreens)
+          }
+          
+          if (data.data.allowedLocations) {
+            localStorage.setItem('allowedLocations', data.data.allowedLocations)
+          }
         }
         
-        // Redirect to dashboard or home page
         navigate('/orders') 
       } else {
-     
         setError(data.message || 'Login failed. Please check your credentials.')
       }
     } catch (err) {
@@ -65,27 +70,23 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-[480px] p-8 rounded-3xl bg-white border border-gray-200 shadow-lg">
-        {/* Avatar */}
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
             <span className="text-2xl text-blue-600">A</span>
           </div>
         </div>
 
-        {/* Welcome Text */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome to APS</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Error Message */}
           {error && (
             <div className="p-3 rounded-lg bg-red-50 border border-red-200">
               <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 
-          {/* Email Input */}
           <div className="space-y-4">
             <label className="text-sm font-medium text-gray-700">Username</label>
             <input
@@ -99,7 +100,6 @@ const Login = () => {
             />
           </div>
 
-          {/* Password Input */}
           <div className="space-y-2.5">
             <div className="flex justify-between">
               <label className="text-sm font-medium text-gray-700">Password</label>
@@ -129,7 +129,6 @@ const Login = () => {
             </div>
           </div>
 
-          {/* Login Button */}
           <button
             type="submit"
             className="w-full cursor-pointer py-3 px-4 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
