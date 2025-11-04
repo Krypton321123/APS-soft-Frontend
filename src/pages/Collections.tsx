@@ -520,7 +520,6 @@ function Collections() {
           <input
             type="checkbox"
             checked={table.getIsAllRowsSelected()}
-            indeterminate={table.getIsSomeRowsSelected()}
             onChange={table.getToggleAllRowsSelectedHandler()}
             className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
           />

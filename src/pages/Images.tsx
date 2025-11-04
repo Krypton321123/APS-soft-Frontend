@@ -36,6 +36,8 @@ function Images() {
   const [loading, setLoading] = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
   const [totals, setTotals] = useState<any>({}); 
+
+  console.log(totals)
   
   // Frontend-only party flags state
   const [partyFlags, setPartyFlags] = useState<Record<string, string>>(() => {

@@ -81,6 +81,7 @@ interface ApiResponse<T> {
 
 function Orders() {
   const [users, setUsers] = useState<User[]>([])
+  console.log(users)
   const [expanded, setExpanded] = useState({})
   const [orders, setOrders] = useState<Order[]>([])
   const [locationTree, setLocationTree] = useState<LocationNode[]>([])
@@ -162,6 +163,7 @@ const buildLocationTree = (users: User[]) => {
   }
 
   const isLocationAllowed = (locationName: string, locationType: 'state' | 'depot' | 'user'): boolean => {
+    console.log(locationType)
     if (userType === 'ADMIN') return true
     if (allowedLocationsArray.length === 0) return false
 
@@ -562,7 +564,6 @@ const buildLocationTree = (users: User[]) => {
           <input
             type="checkbox"
             checked={table.getIsAllRowsSelected()}
-            indeterminate={table.getIsSomeRowsSelected()}
             onChange={table.getToggleAllRowsSelectedHandler()}
             className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
           />

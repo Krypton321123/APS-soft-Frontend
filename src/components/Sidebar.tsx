@@ -40,15 +40,6 @@ function Sidebar({ children }: {children: React.ReactNode}) {
         allowedLocationsArray = []
     }
 
-    // Map screen names to paths
-    const screenPathMap: Record<string, string> = {
-        'orders': '/orders',
-        'collections': '/collections',
-        'attendance': '/attendance',
-        'daily working': '/images',
-        'rate list': '/ratelist',
-        'route maps': '/location'
-    }
 
     // Define all sidebar items
     const allSidebarItems = [
