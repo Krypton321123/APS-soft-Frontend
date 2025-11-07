@@ -44,7 +44,16 @@ const Attendance: React.FC = () => {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/attendance/getDepots`);
         const data = await response.json();
         if (data.statusCode === 200) {
-          setDepots(data.data);
+          const allowedLocations = JSON.parse(localStorage.getItem('allowedLocations') || ''); 
+
+          if (!allowedLocations || allowedLocations.length === 0) {
+            setDepots(data.data); 
+          } else { 
+            const allowedData = data.data.filter((item: string) => {
+              return allowedLocations.includes(item.toUpperCase().slice(0, 3)); 
+            })
+            setDepots(allowedData)
+          }
           if (data.data.length > 0) {
             setSelectedDepot(data.data[0]);
           }

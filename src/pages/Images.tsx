@@ -59,7 +59,17 @@ function Images() {
     const fetchDepots = async () => {
       try {
         const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/depots`);
-        setDepotOptions(response.data);
+        const allowedLocations = JSON.parse(localStorage.getItem("allowedLocations") || ""); 
+        if (!allowedLocations || allowedLocations.length === 0){
+          return setDepotOptions(response.data);
+        } else {
+          const allowedData = response.data.filter((item: string) => {
+            return allowedLocations.includes(item.toUpperCase().slice(0, 3)); 
+          })
+          console.log(allowedLocations)
+          return setDepotOptions(allowedData)
+        }
+ 
       } catch (error) {
         console.error('Failed to fetch depots', error);
       }

@@ -139,7 +139,7 @@ function Collections() {
     const isLocationAllowed = (locationName: string): boolean => {
       if (userType === 'ADMIN') return true
       if (allowedLocationsArray.length === 0) return false
-      
+      console.log("location name", locationName)
       return allowedLocationsArray.some(loc => 
         loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
       )
@@ -154,6 +154,8 @@ function Collections() {
         const isUserAllowed = isLocationAllowed(user.usrnm) || isLocationAllowed(user.username)
         const isDepotAllowed = isLocationAllowed(user.untnm)
         const isStateAllowed = isLocationAllowed(user.stnm)
+
+        console.log(user.stnm, user.untnm)
         
         if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) {
           return

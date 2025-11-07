@@ -166,7 +166,7 @@ const buildLocationTree = (users: User[]) => {
     console.log(locationType)
     if (userType === 'ADMIN') return true
     if (allowedLocationsArray.length === 0) return false
-
+    console.log(locationName.toLowerCase().slice(0, 3))
     return allowedLocationsArray.some(loc => 
       loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
     )
