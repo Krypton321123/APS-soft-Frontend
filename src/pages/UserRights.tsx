@@ -47,6 +47,7 @@ export default function UserManagement() {
   const fetchScreens = async () => {
     try {
       const response = await axios.get(`${API_URL}/admin/screens`)
+      console.log(response)
       if (response.data.success) {
         setAvailableScreens(response.data.data)
       }

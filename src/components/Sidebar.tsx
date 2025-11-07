@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaBook, FaFileImage, FaMoneyBillWave, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { IoMdExit } from "react-icons/io";
-import { CiBadgeDollar, CiLocationArrow1 } from 'react-icons/ci';
+import { CiBadgeDollar, CiLocationArrow1, CiUser } from 'react-icons/ci';
 import { motion } from 'motion/react';
 
 function Sidebar({ children }: {children: React.ReactNode}) {
@@ -46,9 +46,10 @@ function Sidebar({ children }: {children: React.ReactNode}) {
         { name: 'Orders', icon: <FaBook />, color: 'text-blue-600', path: '/orders', screenKey: 'orders' },
         { name: 'Collections', icon: <FaMoneyBillWave />, color: 'text-green-600', path: '/collections', screenKey: 'collections' },
         { name: 'Attendance', icon: <FaUser />, color: 'text-red-600', path: '/attendance', screenKey: 'attendance' },
-        { name: 'Daily Working', icon: <FaFileImage />, color: 'text-purple-600', path: '/images', screenKey: 'daily working' },
-        { name: 'Rate List', icon: <CiBadgeDollar />, color: 'text-gray-700', path: '/ratelist', screenKey: 'rate list' }, 
-        { name: 'Route Maps', icon: <CiLocationArrow1 />, color: 'text-slate-600', path: '/location', screenKey: 'route maps' }
+        { name: 'Daily Working', icon: <FaFileImage />, color: 'text-purple-600', path: '/images', screenKey: 'images' },
+        { name: 'Rate List', icon: <CiBadgeDollar />, color: 'text-gray-700', path: '/ratelist', screenKey: 'ratelist' }, 
+        { name: 'Route Maps', icon: <CiLocationArrow1 />, color: 'text-slate-600', path: '/location', screenKey: 'location' },
+        { name: 'User Rights', icon: <CiUser />, color: 'text-yellow-600', path: '/user-management', screenKey: 'user-management'}
     ]
 
     // Filter sidebar items based on user permissions
@@ -56,7 +57,7 @@ function Sidebar({ children }: {children: React.ReactNode}) {
         if (userType === 'ADMIN') {
             return allSidebarItems
         }
-        
+        console.log(allowedScreensArray)
         // For OPERATOR, filter by allowed screens
         return allSidebarItems.filter(item => 
             allowedScreensArray.some(screen => 
