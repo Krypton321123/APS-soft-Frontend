@@ -10,6 +10,7 @@ import Rate from './pages/Rate'
 import Location from './pages/Location'
 import "leaflet/dist/leaflet.css"
 import UserManagement from './pages/UserRights'
+import { ToastContainer } from 'react-toastify'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
         <Route path='/user-management' element={<ProtectedRoute><Sidebar><UserManagement /></Sidebar></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/orders" replace />} />
       </Routes>
+      <ToastContainer />
     </Router>
   )
 }

@@ -39,6 +39,8 @@ const Attendance: React.FC = () => {
   // Fetch depot names on component mount
   useEffect(() => {
     const fetchDepots = async () => {
+      let allowedData = []; 
+      // let allowedLocations = []
       try {
         console.log(import.meta.env)
         const response = await fetch(`${import.meta.env.VITE_API_URL}/attendance/getDepots`);
@@ -49,13 +51,13 @@ const Attendance: React.FC = () => {
           if (!allowedLocations || allowedLocations.length === 0) {
             setDepots(data.data); 
           } else { 
-            const allowedData = data.data.filter((item: string) => {
+            allowedData = data.data.filter((item: string) => {
               return allowedLocations.includes(item.toUpperCase().slice(0, 3)); 
             })
             setDepots(allowedData)
           }
-          if (data.data.length > 0) {
-            setSelectedDepot(data.data[0]);
+          if (allowedData.length > 0) {
+            setSelectedDepot(allowedData[0]);
           }
         }
       } catch (error) {
