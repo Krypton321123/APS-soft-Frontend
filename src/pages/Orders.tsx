@@ -16,6 +16,10 @@ import {
 } from '@tanstack/react-table'
 import type { ColumnDef } from "@tanstack/react-table"
 import { ChevronUp } from 'lucide-react'
+import { toast } from "sonner"
+import axios from "axios"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectGroup } from "@/components/ui/select"
 
 const API_BASE_URL = import.meta.env.VITE_API_URL
 
@@ -79,13 +83,16 @@ interface ApiResponse<T> {
   success: boolean
 }
 
+
 function Orders() {
   const [users, setUsers] = useState<User[]>([])
   console.log(users)
   const [expanded, setExpanded] = useState({})
   const [orders, setOrders] = useState<Order[]>([])
+  const [adminType] = useState(localStorage.getItem("userType"))
   const [locationTree, setLocationTree] = useState<LocationNode[]>([])
   const [loading, setLoading] = useState(false)
+  const [orderFilter, setOrderFilter] = useState("all"); 
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [globalFilter, setGlobalFilter] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -101,8 +108,11 @@ function Orders() {
     consumerQuantity: number
     bulkQuantity: number
     consumerRate: number
-    bulkRate: number
+    bulkRate: number, 
+    remarks: string 
   }>>({})
+
+  
 
   useEffect(() => {
     fetchUsers()
@@ -335,7 +345,7 @@ const buildLocationTree = (users: User[]) => {
     } else {
       setOrders([])
     }
-  }, [locationTree, fromDate, toDate])
+  }, [locationTree, fromDate, toDate, orderFilter])
 
   const fetchOrders = async (states: string[], depots: string[], employees: string[]) => {
     setOrdersLoading(true)
@@ -348,6 +358,9 @@ const buildLocationTree = (users: User[]) => {
       if (employees.length > 0) params.set("employees", employees.join(","))
       params.set("from", fromDate)
       params.set("to", toDate)
+      params.set("user", localStorage.getItem("username") || "")
+      params.set("filter", orderFilter); 
+      params.set("admin", adminType as string)
 
       const response = await fetch(`${API_BASE_URL}/orders/by-location?${params.toString()}`, {
         method: "GET",
@@ -365,6 +378,7 @@ const buildLocationTree = (users: User[]) => {
       if (result.success && result.data) {
         setOrders(result.data)
       } else {
+        setOrders([]); 
         throw new Error(result.message || "Failed to fetch orders")
       }
     } catch (error) {
@@ -408,7 +422,11 @@ const buildLocationTree = (users: User[]) => {
     }))
   }
 
-  const calculateQuantities = (orderItems: OrderItem[]) => {
+  const calculateQuantities = (orderItems: OrderItem[] | null | undefined) => {
+    if (!orderItems || !Array.isArray(orderItems)) return {
+      totalQuantity: 0, bulkQuantity: 0, consumerQuantity: 0
+    }; 
+
     let consumerQuantity = 0
     let bulkQuantity = 0
     let totalQuantity = 0
@@ -471,43 +489,84 @@ const buildLocationTree = (users: User[]) => {
     return checkAnySelected(tree)
   }
 
-  const handleAcceptOrders = async () => {
-    const selectedRows = table.getSelectedRowModel().rows
-    const selectedOrdersList = selectedRows.map(row => ({
-      orderId: row.original.order_id,
-      ...editedValues[row.original.order_id]
-    }))
+  const handleAcceptOrders = async (userType: string) => {
 
-    console.log("Sending edited values:", selectedOrdersList)
+    let status = ''; 
 
-    const response: any = await fetch('http://157.15.93.224:8000/api/v1/orders/statusUpdate', {
-      method: 'POST',
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        status: 'ACCEPT',
-        orders: selectedOrdersList
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (userType === "ADMIN" || userType === "HEAD-OFFICE") {
+      status = "ACCEPT"
+    } else if (userType === "DEPOT-INCHARGE") {
+      status = "PARK"
+    } else {
+      return toast.info("Not a valid User Type"); 
     }
 
-    const result = await response.json()
+    const formatOrders = table.getSelectedRowModel().rows.map((row) => {
+            console.log(row.original.consumerRate)
+            return {
+              id: row.original.order_id, consumerRate: editedValues[row.original.order_id]?.consumerRate ?? row.original.consumerRate, bulkRate: editedValues[row.original.order_id]?.bulkRate ?? row.original.bulkRate, remarks: editedValues[row.original.order_id]?.remarks ?? ""
+          }
+        }) 
 
-    if (result.status === 200) {
-      console.log('orders accepted with edits')
+    const dataToSend = {
+        orders: formatOrders, 
+        adminName: localStorage.getItem("username"), 
+        status
     }
 
-    setRowSelection({})
+    try {
+      
+      const response = await axios.post(`${API_BASE_URL}/orders/accept`, dataToSend); 
+
+      if (response.status === 200) {
+        formatOrders.map((item) => {
+          const updatedOrders = orders.filter((order) => item.id !== order.order_id); 
+
+          setOrders(updatedOrders); 
+          setRowSelection({}); 
+        })
+        return toast.success(status === "ACCEPT" ? "Orders Accepted Successfully" : "Orders parked successfully"); 
+      }
+
+    } catch (err: any) {
+      console.log("Error posting orders: ", err); 
+      return toast.error("Error accepting / parking orders")
+    }
   }
 
-  const handleRejectOrders = () => {
+  const handleRejectOrders = async () => {
     const selectedRows = table.getSelectedRowModel().rows
-    console.log("Rejecting orders:", selectedRows.map(row => row.original.order_id))
-    setRowSelection({})
+    
+    try {
+
+      const formatOrders = selectedRows.map((row) => {
+            console.log(row.original.consumerRate)
+            return {
+              id: row.original.order_id, consumerRate: editedValues[row.original.order_id]?.consumerRate ?? row.original.consumerRate, bulkRate: editedValues[row.original.order_id]?.bulkRate ?? row.original.bulkRate, remarks: editedValues[row.original.order_id]?.remarks ?? ""
+          }
+        })  
+
+        const dataToSend = {
+        orders: formatOrders, 
+        adminName: localStorage.getItem("username"), 
+      }
+
+      const response = await axios.post(`${API_BASE_URL}/orders/reject`, dataToSend); 
+
+      if (response.status === 200) {
+        formatOrders.map((item) => {
+          const updatedOrders = orders.filter((order) => item.id !== order.order_id); 
+
+          setOrders(updatedOrders); 
+          setRowSelection({}); 
+        })
+        return toast.success(status === "ACCEPT" ? "Orders Accepted Successfully" : "Orders parked successfully"); 
+      }
+
+    } catch (err: any) {
+      console.log("Error posting orders: ", err); 
+      return toast.error("Error accepting / parking orders")
+    }
   }
 
   const renderLocationNode = (node: LocationNode, path: number[], depth = 0) => {
@@ -742,6 +801,13 @@ const buildLocationTree = (users: User[]) => {
         size: 80,
       },
       {
+        accessorKey: "amountAfterDiscount", 
+        header: "Amount After Discount", 
+        cell: ({ row }) => {
+          return <span>{row.original.consumerRate! - row.original.discountAmount}</span>
+        }
+      },
+      {
         accessorKey: 'totalAmount',
         accessorFn: row => Number(row.totalAmount),
         header: ({ column }) => (
@@ -793,12 +859,19 @@ const buildLocationTree = (users: User[]) => {
         ),
         size: 100,
       },
+      {
+        accessorKey: "remarks", 
+        header: "Remarks (Accept / Park)", 
+        cell: ({ row }) => {
+          return <Textarea className="w-40" onChange={(e) => {editedValues[row.original.order_id].remarks = e.target.value}} />
+        }
+      }
     ],
     [editedValues]
   )
 
   const table = useReactTable({
-    data: orders,
+    data: orders ?? [],
     columns,
     state: {
       globalFilter,
@@ -818,9 +891,6 @@ const buildLocationTree = (users: User[]) => {
     onExpandedChange: setExpanded,
     getGroupedRowModel: getGroupedRowModel(),
     getRowCanExpand: () => true,
-    initialState: {
-      
-    },
   })
 
   useEffect(() => {
@@ -952,7 +1022,7 @@ const buildLocationTree = (users: User[]) => {
                 <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
                   <CSVLink 
                     data={[
-                      ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                      ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Amount After Discount","Total Amount", "Payment"], 
                       ...orders.map((item) => {
                         const { totalQuantity } = calculateQuantities(item.orderItems)
                         return [
@@ -967,6 +1037,7 @@ const buildLocationTree = (users: User[]) => {
                           item.bulkRate, 
                           totalQuantity,
                           item.discountAmount, 
+                          item.consumerRate! - item.discountAmount,
                           item.totalAmount, 
                           item.paymentMode
                         ]
@@ -977,11 +1048,12 @@ const buildLocationTree = (users: User[]) => {
                     Download CSV (All orders)
                   </CSVLink>
                 </button>
+                
                 {selectedOrders.length > 0 && (
                   <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
                     <CSVLink 
                       data={[
-                        ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Total Amount", "Payment"], 
+                        ["Employee", "Party Name", "Date", "Consumer Rate", "Bulk Rate", "Total Quantity", "Discount", "Amount After Discount", "Total Amount", "Payment"], 
                         ...selectedOrders.map((item) => {
                           const { totalQuantity } = calculateQuantities(item.orderItems)
                           return [
@@ -996,6 +1068,7 @@ const buildLocationTree = (users: User[]) => {
                             item.bulkRate, 
                             totalQuantity,
                             item.discountAmount, 
+                            item.consumerRate! - item.discountAmount, 
                             item.totalAmount, 
                             item.paymentMode
                           ]
@@ -1006,10 +1079,28 @@ const buildLocationTree = (users: User[]) => {
                       Download CSV (Selected orders)
                     </CSVLink>
                   </button>
+                  
                 )}
               </div>
+              
             )}
           </div>
+          <div className="mt-3 flex items-center gap-2">
+              Order Filter:
+              <Select value={orderFilter} onValueChange={setOrderFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a type"/>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All</SelectItem>
+                      {adminType === "DEPOT-INCHARGE"|| adminType === "ADMIN" && <SelectItem value="park">Parked</SelectItem>}
+                      <SelectItem value="accept">Accepted</SelectItem>
+                      <SelectItem value="reject">Rejected</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
         </div>
 
         <div className="mb-4 flex items-center gap-4 flex-wrap">
@@ -1225,15 +1316,17 @@ const buildLocationTree = (users: User[]) => {
                     <div className="text-sm text-gray-600">
                       {selectedOrders.length} order{selectedOrders.length !== 1 ? "s" : ""} selected
                     </div>
-                    <div className="flex items-center gap-3">
+                   {adminType !== "OPERATOR" && <div className="flex items-center gap-3">
                       <p className="text-sm">Consumer Quantity: <span className="font-semibold">{totalConsumerQuantity}</span></p>
                       <p className="text-sm">Bulk Quantity: <span className="font-semibold">{totalBulkQuantity}</span></p>
                       <button
-                        onClick={handleAcceptOrders}
+                        onClick={() => handleAcceptOrders(adminType as string)}
                         className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
                       >
                         <FaCheck className="mr-2" size={14} />
-                        Accept Orders
+                        {adminType === "DEPOT-INCHARGE" && "Park Orders"}
+                        {adminType === "HEAD-OFFICE" && "Accept Orders"}
+                        {adminType === "ADMIN" && "Accept Orders"}
                       </button>
                       <button
                         onClick={handleRejectOrders}
@@ -1242,7 +1335,7 @@ const buildLocationTree = (users: User[]) => {
                         <FaTimes className="mr-2" size={14} />
                         Reject Orders
                       </button>
-                    </div>
+                    </div>}
                   </div>
                 </div>
               )}

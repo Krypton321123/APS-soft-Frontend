@@ -15,6 +15,7 @@ import {
   flexRender,
 } from '@tanstack/react-table'
 import type { ColumnDef } from "@tanstack/react-table"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 // Types
 interface User {
@@ -695,7 +696,7 @@ function Collections() {
         style={{ width: "clamp(256px, 20vw, 320px)" }}
       >
         {isFilterOpen ? (
-          <div className="p-4">
+          <ScrollArea className="p-4 max-h-[30vh]">
             <div className="mb-4">
               <IoIosOpen 
                 onClick={() => setIsFilterOpen(false)} 
@@ -767,7 +768,7 @@ function Collections() {
             ) : (
               <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
             )}
-          </div>
+          </ScrollArea>
         ) : (
           <div onClick={() => setIsFilterOpen(true)} className="w-10 p-0 hover:bg-gray-200 transition-colors cursor-pointer duration-100 flex justify-center items-center ease-in absolute left-3 h-10">
             <IoIosOpen size={28}/>
