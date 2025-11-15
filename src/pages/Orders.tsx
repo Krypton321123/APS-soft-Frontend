@@ -160,13 +160,16 @@ function Orders() {
 const buildLocationTree = (users: User[]) => {
   const userType = localStorage.getItem('userType') || 'ADMIN'
   const allowedLocations = localStorage.getItem('allowedLocations') || '[]'
-  
+
+
+  console.log(allowedLocations)
   let allowedLocationsArray: string[] = []
   try {
     allowedLocationsArray = JSON.parse(allowedLocations)
     if (!Array.isArray(allowedLocationsArray)) {
       allowedLocationsArray = []
     }
+    console.log("array: ", allowedLocationsArray)
   } catch (error) {
     console.error('Error parsing allowedLocations:', error)
     allowedLocationsArray = []
@@ -176,7 +179,7 @@ const buildLocationTree = (users: User[]) => {
     console.log(locationType)
     if (userType === 'ADMIN') return true
     if (allowedLocationsArray.length === 0) return false
-    console.log(locationName.toLowerCase().slice(0, 3))
+    console.log("location: ", locationName.toLowerCase().slice(0, 3))
     return allowedLocationsArray.some(loc => 
       loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
     )
@@ -187,7 +190,7 @@ const buildLocationTree = (users: User[]) => {
   users.forEach((user) => {
     if (!user.stnm || !user.untnm) return
 
-    if (userType === 'OPERATOR') {
+    if (userType !== "ADMIN") {
       const isUserAllowed = isLocationAllowed(user.usrnm, 'user') || 
                            isLocationAllowed(user.username, 'user')
       const isDepotAllowed = isLocationAllowed(user.untnm, 'depot')
@@ -238,7 +241,8 @@ const buildLocationTree = (users: User[]) => {
     })
   })
 
-  // Filter out empty states and depots
+  console.log(stateMap)
+
   const tree = Array.from(stateMap.values())
     .filter(state => state.children && state.children.length > 0)
     .map(state => ({
@@ -246,6 +250,7 @@ const buildLocationTree = (users: User[]) => {
       children: state.children?.filter(depot => depot.children && depot.children.length > 0)
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
+
 
   setLocationTree(tree)
 }
