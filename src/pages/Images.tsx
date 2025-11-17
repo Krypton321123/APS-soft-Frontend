@@ -79,7 +79,7 @@ function Images() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
-  const [totals, setTotals] = useState<any>({}); 
+  const [_, setTotals] = useState<any>({}); 
   
   const [partyFlags, setPartyFlags] = useState<Record<string, string>>({});
   const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
