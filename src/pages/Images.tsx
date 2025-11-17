@@ -11,8 +11,11 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table';
 import { Flag, ChevronDown, ChevronUp } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { toast } from 'sonner';
 
-// Flag/Category options
 const FLAG_OPTIONS = [
   { value: 'A', label: 'Flag A', color: 'bg-red-100 text-red-800 border-red-300' },
   { value: 'B', label: 'Flag B', color: 'bg-blue-100 text-blue-800 border-blue-300' },
@@ -20,6 +23,47 @@ const FLAG_OPTIONS = [
   { value: 'D', label: 'Flag D', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
   { value: 'NONE', label: 'No Flag', color: 'bg-gray-100 text-gray-800 border-gray-300' }
 ];
+
+const RemarksCell = ({ imageId, remarksList, setRemarksList }: any) => {
+  const [localRemark, setLocalRemark] = useState(remarksList[imageId] || '');
+
+  useEffect(() => {
+    setLocalRemark(remarksList[imageId] || '');
+  }, [remarksList, imageId]);
+
+  const handleSave = async () => {
+    if (!localRemark || localRemark.trim() === "") {
+      return toast("Write something in the remark");
+    }
+
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/images/saveRemark`, {
+        image_id: imageId,
+        remark: localRemark.trim()
+      });
+
+      if (response.status === 200) {
+        setRemarksList((prev: any) => ({ ...prev, [imageId]: localRemark.trim() }));
+        toast("Remark saved successfully");
+      }
+    } catch (error) {
+      console.error('Failed to save remark', error);
+      toast("Failed to save remark");
+    }
+  };
+
+  return (
+    <div className='w-72 flex gap-2 items-center'>
+      <Textarea
+        value={localRemark}
+        onChange={(e) => setLocalRemark(e.target.value)}
+      />
+      <Button onClick={handleSave} className='cursor-pointer'>
+        Save
+      </Button>
+    </div>
+  );
+};
 
 function Images() {
   // State for selections
@@ -36,23 +80,34 @@ function Images() {
   const [loading, setLoading] = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
   const [totals, setTotals] = useState<any>({}); 
-
-  console.log(totals)
   
-  // Frontend-only party flags state
-  const [partyFlags, setPartyFlags] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem('partyFlags');
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [partyFlags, setPartyFlags] = useState<Record<string, string>>({});
   const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
+  const [remarksList, setRemarksList] = useState<Record<string, string>>({})
 
   const [depotOptions, setDepotOptions] = useState<string[]>([]);
   const [employeeOptions, setEmployeeOptions] = useState<string[]>([]);
 
-  // Save party flags to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('partyFlags', JSON.stringify(partyFlags));
-  }, [partyFlags]);
+    const getFlags = async () => {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/getFlags`); 
+
+      console.log(response)
+
+      if (response.status === 200) {
+        if (!response.data.data || response.data.data.length === 0) {
+          return setPartyFlags({});  
+        } 
+
+        response.data.data.forEach((item: any) => {
+          setPartyFlags(prev => {return {...prev, [item.partyId]: item.flag}})
+        })
+        return; 
+      }
+    }
+
+    getFlags()
+  }, []);
 
   // Fetch depot options on component mount
   useEffect(() => {
@@ -95,24 +150,32 @@ function Images() {
     }
   }, [depot]);
 
-  // Update party flag (frontend only)
-  const updatePartyFlag = (partyId: string, flag: string) => {
+  const updatePartyFlag = async (partyId: string, flag: string) => {
     setPartyFlags(prev => ({ ...prev, [partyId]: flag }));
     setEditingPartyId(null);
+    try {
+
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/images/saveFlag`, {partyId, flag}); 
+
+      console.log("save flag response ->", response); 
+      if (response.status === 200){
+        toast("Flag saved successfully")
+      }
+
+    } catch (err: any) {
+      console.log("saving party flags error ->", err)
+    }
   };
 
-  // Get flag for a party
   const getPartyFlag = (partyId: string) => {
-    return partyFlags[partyId] || 'NONE';
+    return partyFlags![partyId] || 'NONE';
   };
 
-  // Get flag color class
   const getFlagColorClass = (flag: string) => {
     const option = FLAG_OPTIONS.find(opt => opt.value === flag);
     return option?.color || 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
-  // Filter and group images
   const processedData = useMemo(() => {
     let filtered = images;
 
@@ -149,78 +212,88 @@ function Images() {
 
   const columnHelper = createColumnHelper<any>();
 
-  const columns = [
-    columnHelper.accessor((_, index) => index + 1, {
-      id: 'serial',
-      header: 'S. No.',
-      cell: info => info.getValue(),
-    }),
-    columnHelper.accessor('profileImageUrl', {
-      header: 'Image',
-      cell: info => (
-        <img 
-          src={info.getValue()}
-          className="w-16 h-16 object-cover cursor-pointer hover:opacity-75"
-          onClick={() => setSelectedImage(info.row.original)}
-        />
-      ),
-      enableSorting: false,
-    }),
-    columnHelper.accessor('createdAt', {
-      header: 'Date Time',
-      cell: info => {
-        const dateForDisplay = new Date(info.getValue());
-        const year = dateForDisplay.getFullYear(); 
-        const month = dateForDisplay.getMonth() + 1; 
-        const dd = dateForDisplay.getDate(); 
-        return `${dd}-${month}-${year}`;
-      },
-    }),
-    columnHelper.accessor('partyId', {
-      header: 'Party ID',
-      cell: info => (
-        <div>
-          <p className='text-md'>{info.row.original.partyName}</p>
-          <p className='text-sm text-gray-500'>{info.getValue()}</p>
-          <div className="mt-1">
-            {editingPartyId === info.getValue() ? (
-              <select
-                value={getPartyFlag(info.getValue())}
-                onChange={(e) => updatePartyFlag(info.getValue(), e.target.value)}
-                className="text-xs border rounded px-1 py-0.5"
-                onBlur={() => setEditingPartyId(null)}
-                autoFocus
-              >
-                {FLAG_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            ) : (
-              <button
-                onClick={() => setEditingPartyId(info.getValue())}
-                className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 ${getFlagColorClass(getPartyFlag(info.getValue()))}`}
-              >
-                <Flag className="w-3 h-3" />
-                {FLAG_OPTIONS.find(opt => opt.value === getPartyFlag(info.getValue()))?.label}
-              </button>
-            )}
-          </div>
+  const columns = useMemo(() => [
+  columnHelper.accessor((_, index) => index + 1, {
+    id: 'serial',
+    header: 'S. No.',
+    cell: info => info.getValue(), 
+  }),
+  columnHelper.accessor('profileImageUrl', {
+    header: 'Image',
+    cell: info => (
+      <img 
+        src={info.getValue()}
+        className="w-16 h-16 object-cover cursor-pointer hover:opacity-75"
+        onClick={() => setSelectedImage(info.row.original)}
+      />
+    ),
+    enableSorting: false,
+  }),
+  columnHelper.accessor('createdAt', {
+    header: 'Date Time',
+    cell: info => {
+      const dateForDisplay = new Date(info.getValue());
+      const year = dateForDisplay.getFullYear(); 
+      const month = dateForDisplay.getMonth() + 1; 
+      const dd = dateForDisplay.getDate(); 
+      return `${dd}-${month}-${year}`;
+    },
+  }),
+  columnHelper.accessor('partyId', {
+    header: 'Party ID',
+    cell: info => (
+      <div>
+        <p className='text-md'>{info.row.original.partyName}</p>
+        <p className='text-sm text-gray-500'>{info.getValue()}</p>
+        <div className="mt-1">
+          {editingPartyId === info.getValue() ? (
+            <select
+              value={getPartyFlag(info.getValue())}
+              onChange={(e) => updatePartyFlag(info.getValue(), e.target.value)}
+              className="text-xs border rounded px-1 py-0.5"
+              onBlur={() => setEditingPartyId(null)}
+              autoFocus
+            >
+              {FLAG_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : (
+            <button
+              onClick={() => setEditingPartyId(info.getValue())}
+              className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 ${getFlagColorClass(getPartyFlag(info.getValue()))}`}
+            >
+              <Flag className="w-3 h-3" />
+              {FLAG_OPTIONS.find(opt => opt.value === getPartyFlag(info.getValue()))?.label}
+            </button>
+          )}
         </div>
-      ),
-    }),
-    columnHelper.accessor('orderQuantity', {
-      header: 'Order Quantity',
-      cell: info => info.getValue(),
-    }),
-    columnHelper.accessor('collectionAmount', {
-      header: 'Collection Amount',
-      cell: info => info.getValue() as number,
-    }),
-    columnHelper.accessor('outstanding', {
-      header: 'Outstanding Amount',
-      cell: info => info.getValue(),
-    }),
-  ];
+      </div>
+    ),
+  }),
+  columnHelper.accessor('orderQuantity', {
+    header: 'Order Quantity',
+    cell: info => info.getValue(),
+  }),
+  columnHelper.accessor('collectionAmount', {
+    header: 'Collection Amount',
+    cell: info => info.getValue() as number,
+  }),
+  columnHelper.accessor('outstanding', {
+    header: 'Outstanding Amount',
+    cell: info => info.getValue(),
+  }),
+  columnHelper.accessor('Remarks', {
+    header: "Remarks", 
+    cell: ({ row }) => (
+      <RemarksCell
+      imageId={row.original.image_id}
+      remarksList={remarksList}
+      setRemarksList={setRemarksList}
+    />
+    )
+  })
+], [remarksList, editingPartyId, partyFlags]); 
 
   const table = useReactTable({
     data: groupByFlag ? [] : (processedData as any[]),
@@ -274,6 +347,11 @@ function Images() {
       });
       setImages(response.data.data.sendData);
       setTotals(response.data.data.total)
+      response.data.data.sendData.forEach((item: any) => {
+        if (item.remarks) {
+          setRemarksList(prev => {return {...prev, [item.image_id]: item.remarks}})
+        }
+      })
       if (response.data.length === 0) {
         setShowNoResults(true);
       }
@@ -305,7 +383,7 @@ function Images() {
   };
 
   return (
-    <div className="container bg-white mx-auto p-6 max-w-6xl">
+    <div className="container bg-white mx-auto p-6 max-w-7xl">
       <h1 className="text-2xl font-bold mb-6 text-center">Image Gallery</h1>
       <div className="mb-4 text-sm text-gray-600 flex justify-between items-center">
         <span>Note: Depot names and employees are fetched from the backend. Party flags are stored locally in your browser.</span>
@@ -461,62 +539,64 @@ function Images() {
                     <Flag className="w-4 h-4" />
                     {FLAG_OPTIONS.find(opt => opt.value === flag)?.label} ({items.length} items)
                   </div>
-                  <table className="w-full">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="text-gray-500 font-normal p-4">S. No.</th>
-                        <th className="text-gray-500 font-normal p-4">Image</th>
-                        <th className="text-gray-500 font-normal p-4">Date Time</th>
-                        <th className="text-gray-500 font-normal p-4">Party ID</th>
-                        <th className="text-gray-500 font-normal p-4">Order Qty</th>
-                        <th className="text-gray-500 font-normal p-4">Collection</th>
-                        <th className="text-gray-500 font-normal p-4">Outstanding</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
+                  <Table className="w-full">
+                    <TableHeader>
+                      <TableRow className="">
+                          <TableHead className="">S. No.</TableHead>
+                          <TableHead className="">Image</TableHead>
+                          <TableHead className="">Date Time</TableHead>
+                          <TableHead className="">Party ID</TableHead>
+                          <TableHead className="">Order Qty</TableHead>
+                          <TableHead className="">Collection</TableHead>
+                          <TableHead className="">Outstanding</TableHead>
+                          <TableHead className="">Remarks</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="">
                       {items.map((img: any, index: number) => {
                         const dateForDisplay = new Date(img.createdAt);
                         const formattedDate = `${dateForDisplay.getDate()}-${dateForDisplay.getMonth() + 1}-${dateForDisplay.getFullYear()}`;
                         
                         return (
-                          <tr key={index}>
-                            <td className="px-4 py-2 text-center">{index + 1}</td>
-                            <td className="px-4 py-2">
+                          <TableRow key={index}>
+                            <TableCell className="">{index + 1}</TableCell>
+                            <TableCell className="">
                               <img 
                                 src={img.profileImageUrl}
-                                className="w-16 h-16 object-cover cursor-pointer hover:opacity-75 mx-auto"
+                                className=""
                                 onClick={() => setSelectedImage(img)}
                               />
-                            </td>
-                            <td className="px-4 py-2 text-center">{formattedDate}</td>
-                            <td className="px-4 py-2">
+                            </TableCell>
+                            <TableCell className="">{formattedDate}</TableCell>
+                            <TableCell className="">
                               <p className="text-md">{img.partyName}</p>
                               <p className="text-sm text-gray-500">{img.partyId}</p>
-                            </td>
-                            <td className="px-4 py-2 text-center">{img.orderQuantity}</td>
-                            <td className="px-4 py-2 text-center">{img.collectionAmount}</td>
-                            <td className="px-4 py-2 text-center">{img.outstanding}</td>
-                          </tr>
+                            </TableCell>
+                            <TableCell className="">{img.orderQuantity}</TableCell>
+                            <TableCell className="">{img.collectionAmount}</TableCell>
+                            <TableCell className="">{img.outstanding}</TableCell>
+                            <TableCell className=""><Textarea /></TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               ))}
             </div>
           ) : (
             // TanStack Table View
-            <table className="w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+            <Table className='w-full'>
+              <TableHeader className="">
                 {table.getHeaderGroups().map(headerGroup => (
-                  <tr key={headerGroup.id}>
+                  <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map(header => (
-                      <th
+                      <TableHead
                         key={header.id}
-                        className="text-gray-500 font-normal tracking-normal p-4 cursor-pointer select-none"
+                        className="text-center"
                         onClick={header.column.getToggleSortingHandler()}
                       >
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="">
                           {flexRender(
                             header.column.columnDef.header,
                             header.getContext()
@@ -530,33 +610,33 @@ function Images() {
                             </span>
                           )}
                         </div>
-                      </th>
+                      </TableHead>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </thead>
-              <tbody className="divide-y divide-gray-200">
+              </TableHeader>
+              <TableBody className="">
                 {table.getRowModel().rows.map(row => (
-                  <tr key={row.id}>
+                  <TableRow key={row.id} className='my-4'>
                     {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} className="px-4 py-2 text-center">
+                      <TableCell key={cell.id} className="">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
                 {/* Totals Row */}
-                <tr className="bg-gray-50 font-semibold">
-                  <td className="px-4 py-2 text-center">-</td>
-                  <td className="px-4 py-2 text-center">-</td>
-                  <td className="px-4 py-2 text-center">-</td>
-                  <td className="px-4 py-2 text-center">Total</td>
-                  <td className="px-4 py-2 text-center">{filteredTotals.totalOrderQuantity}</td>
-                  <td className="px-4 py-2 text-center">{filteredTotals.totalCollectionAmt}</td>
-                  <td className="px-4 py-2 text-center">{filteredTotals.totalOutstanding}</td>
-                </tr>
-              </tbody>
-            </table>
+                <TableRow className="">
+                  <TableCell className="">-</TableCell>
+                  <TableCell className="">-</TableCell>
+                  <TableCell className="">-</TableCell>
+                  <TableCell className="font-bold text-lg">Total</TableCell>
+                  <TableCell className="font-bold">{filteredTotals.totalOrderQuantity}</TableCell>
+                  <TableCell className="font-bold">{filteredTotals.totalCollectionAmt}</TableCell>
+                  <TableCell className="font-bold">{filteredTotals.totalOutstanding}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           )}
         </div>
       )}

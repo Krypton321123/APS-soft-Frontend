@@ -36,6 +36,7 @@ interface Collection {
   amount: number
   paymentMethod: 'cash' | 'cheque' | 'online'
   chequeNumber?: string
+  otp?: string
   chequeDate?: string
   bankName?: string
   upiId?: string
@@ -611,6 +612,16 @@ function Collections() {
           </div>
         ),
         size: 150,
+      },
+      {
+        accessorKey: 'otp',
+        header: 'OTP',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2 font-bold">
+            {row.original.otp || ""}
+          </div>
+        ),
+        size: 60,
       },
       {
         accessorKey: 'amount',

@@ -26,7 +26,7 @@ function App() {
         <Route path='/user-management' element={<ProtectedRoute><Sidebar><UserManagement /></Sidebar></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/orders" replace />} />
       </Routes>
-      <Toaster />
+      <Toaster position="top-right"/>
     </Router>
   )
 }
