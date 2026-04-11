@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaBook, FaFileImage, FaMoneyBillWave, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { IoMdExit } from "react-icons/io";
-import { CiBadgeDollar, CiLocationArrow1, CiUser } from 'react-icons/ci';
+import { CiBadgeDollar, CiLocationArrow1, CiLocationOn, CiUser } from 'react-icons/ci';
 import { motion } from 'motion/react';
 
 function Sidebar({ children }: {children: React.ReactNode}) {
@@ -49,7 +49,8 @@ function Sidebar({ children }: {children: React.ReactNode}) {
         { name: 'Daily Working', icon: <FaFileImage />, color: 'text-purple-600', path: '/images', screenKey: 'images' },
         { name: 'Rate List', icon: <CiBadgeDollar />, color: 'text-gray-700', path: '/ratelist', screenKey: 'ratelist' }, 
         { name: 'Route Maps', icon: <CiLocationArrow1 />, color: 'text-slate-600', path: '/location', screenKey: 'location' },
-        { name: 'User Rights', icon: <CiUser />, color: 'text-yellow-600', path: '/user-management', screenKey: 'user-management'}
+        { name: 'User Rights', icon: <CiUser />, color: 'text-yellow-600', path: '/user-management', screenKey: 'user-management'},
+        { name: 'Location Distance', icon: <CiLocationOn />, color: 'text-yellow-600', path: '/location-distance', screenKey: 'location-distance'}
     ]
 
     // Filter sidebar items based on user permissions
@@ -160,7 +161,7 @@ function Sidebar({ children }: {children: React.ReactNode}) {
                 
                 {/* Content */}
                 <div className='relative z-10 p-8'>
-                    <div className={`bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-6 ${(location.pathname === '/images' || location.pathname === "/orders") ? 'h-screen' : 'h-full'} overflow-auto`}>
+                    <div className={`bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-6 h-screen overflow-auto`}>
                         {children || (
                             <div className='flex items-center justify-center h-full'>
                                 <div className='text-center'>

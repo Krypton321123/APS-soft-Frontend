@@ -7,90 +7,101 @@ import axios from 'axios'
 import MapPanner from '../components/MapPanner';
 import { ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useSearchParams } from 'react-router-dom';
 
 
 export default function Location() {
 
+    const [searchParams] = useSearchParams();
+
     const [coordinates, setCoordinates] = useState<LatLngExpression[]>([])
     const [isFilterOpen, setIsFilterOpen] = useState(true)
     const [center, setCenter] = useState<LatLngExpression>([25.3863479, 82.9961421])
-    const [depot, setDepot] = useState('');
-    const [employee, setEmployee] = useState('');
-    const [date, setDate] = useState('')
+    const [depot, setDepot] = useState(searchParams.get('depot') || '');
+    const [employee, setEmployee] = useState(searchParams.get('employee') || '');
+    const [date, setDate] = useState(searchParams.get('date') || '')
     
     const markerIcon = new L.Icon({
-    iconUrl: "/map-marker.jpg", 
-    iconSize: [30, 38],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
+        iconUrl: "/map-marker.jpg", 
+        iconSize: [30, 38],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
     });
 
     const [depotOptions, setDepotOptions] = useState<string[]>([]);
     const [employeeOptions, setEmployeeOptions] = useState<string[]>([]);
+
     useEffect(() => {
-    const fetchDepots = async () => {
-      try {
-            const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/depots`);
-            const allowedLocations = JSON.parse(localStorage.getItem('allowedLocations') || "")
-            console.log(response.data)
-            if (!allowedLocations || allowedLocations.length === 0) {
-            
-                return setDepotOptions(response.data);
-            } else {
-              const allowedData = response.data.filter((item: string) => allowedLocations.includes(item.toUpperCase().slice(0, 3)))
-              console.log(allowedData)
-              return setDepotOptions(allowedData); 
+        const fetchDepots = async () => {
+            try {
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/depots`);
+                const allowedLocations = JSON.parse(localStorage.getItem('allowedLocations') || "")
+                if (!allowedLocations || allowedLocations.length === 0) {
+                    return setDepotOptions(response.data);
+                } else {
+                    const allowedData = response.data.filter((item: string) => allowedLocations.includes(item.toUpperCase().slice(0, 3)))
+                    return setDepotOptions(allowedData); 
+                }
+            } catch (error) {
+                console.error('Failed to fetch depots', error);
             }
-        } catch (error) {
-            console.error('Failed to fetch depots', error);
-        }
         };
         fetchDepots();
     }, []);
 
     useEffect(() => {
-    if (depot) {
-      const fetchEmployees = async () => {
-        try {
-          const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/employees?depot=${depot}`);
-          setEmployeeOptions(response.data);
-        } catch (error) {
-          console.error('Failed to fetch employees', error);
+        if (depot) {
+            const fetchEmployees = async () => {
+                try {
+                    const response = await axios.get(`${import.meta.env.VITE_API_URL}/images/employees?depot=${depot}`);
+                    setEmployeeOptions(response.data);
+                } catch (error) {
+                    console.error('Failed to fetch employees', error);
+                }
+            };
+            fetchEmployees();
+        } else {
+            setEmployeeOptions([]);
+            setEmployee('');
         }
-      };
-      fetchEmployees();
-    } else {
-      setEmployeeOptions([]);
-      setEmployee('');
-    }
-  }, [depot]);
+    }, [depot]);
 
-    const handleSubmit = async () => {
+    // Auto-fetch when arriving from DistanceReport with query params
+    useEffect(() => {
+        const paramDepot    = searchParams.get('depot');
+        const paramEmployee = searchParams.get('employee');
+        const paramDate     = searchParams.get('date');
+        if (paramDepot && paramEmployee && paramDate && employeeOptions.length > 0) {
+            fetchLocationData(paramEmployee, paramDate);
+        }
+    }, [employeeOptions]); // fires once employees have loaded
 
-        console.log('here')
-
+    const fetchLocationData = async (emp: string, dt: string) => {
         const response = await axios.get(`${import.meta.env.VITE_API_URL}/location/getLocationData`, {
-            params: { depot, employee, date }
-        }); 
-
+            params: { depot, employee: emp, date: dt }
+        });
         if (response.status === 200) {
-            console.log(response)
-            if (!response.data.data.coordinates){
-              return toast("This user doesn't have any location data for this date"); 
+            if (!response.data.data.coordinates) {
+                return toast("This user doesn't have any location data for this date");
             }
             setCoordinates(response.data.data.coordinates)
-            console.log(response.data.data.coordinates[0])
-            setCenter(response.data.data.coordinates[0])   
+            setCenter(response.data.data.coordinates[0])
+            setIsFilterOpen(false) // collapse filter so the map has full room
         } else {
-            alert('Failed to pull location data'); 
+            alert('Failed to pull location data');
         }
+    };
+
+    const handleSubmit = async () => {
+        fetchLocationData(employee, date);
     }
 
     const handleReset = () => {
         setDepot('');
         setEmployee('');
         setDate(''); 
+        setCoordinates([]);
     };
     
 
@@ -104,7 +115,6 @@ export default function Location() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               
               <div className="flex flex-col">
-              
                 <label className="font-bold text-base mb-2" aria-label="Depot selection">
                   Depot:
                 </label>
@@ -143,8 +153,6 @@ export default function Location() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
-              
               <div className="flex flex-col">
                 <label className="font-bold text-base mb-2" aria-label="End date">
                   Date:
@@ -162,7 +170,6 @@ export default function Location() {
               
               <div className="flex items-end space-x-4">
                 <button
-                  
                   onClick={handleReset}
                   className="bg-gray-300 text-gray-800 rounded p-2.5 w-full h-12 hover:bg-gray-400 transition-colors"
                   aria-label="Reset filters"
@@ -181,7 +188,7 @@ export default function Location() {
           </div>
         </div>
 
-        {/* Toggle button - now positioned absolutely */}
+        {/* Toggle button */}
         <button 
           onClick={() => {setIsFilterOpen(prev => !prev)}} 
           className='absolute top-2 right-5 z-[1000] w-10 h-10 bg-white flex justify-center items-center border-2 border-gray-300 rounded-lg shadow-lg hover:bg-gray-50 transition-all duration-200 hover:scale-110'

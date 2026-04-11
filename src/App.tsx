@@ -11,6 +11,7 @@ import Location from './pages/Location'
 import "leaflet/dist/leaflet.css"
 import UserManagement from './pages/UserRights'
 import { Toaster } from 'sonner'
+import DistanceReport from './pages/DistanceReport'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path='/ratelist' element={<ProtectedRoute><Sidebar><Rate /></Sidebar></ProtectedRoute>} />
         <Route path='/location' element={<ProtectedRoute><Sidebar><Location /></Sidebar></ProtectedRoute>}/>
         <Route path='/user-management' element={<ProtectedRoute><Sidebar><UserManagement /></Sidebar></ProtectedRoute>}/>
+        <Route path='/location-distance' element={<ProtectedRoute><Sidebar><DistanceReport /></Sidebar></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/orders" replace />} />
       </Routes>
       <Toaster position="top-right"/>
