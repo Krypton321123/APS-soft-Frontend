@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import React from "react"
-import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaMoneyBillWave, FaCreditCard, FaUniversity } from "react-icons/fa"
+import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaMoneyBillWave, FaCreditCard, FaUniversity, FaTimes } from "react-icons/fa"
 import { CSVLink } from "react-csv"
 import { motion } from 'motion/react'
 import { IoIosOpen } from "react-icons/io"
@@ -43,6 +43,10 @@ interface Collection {
   transactionId?: string
   createdAt: string
   empName: string
+  verified: boolean
+  vchno: string
+  verifiedAt?: string | null
+  verifiedBy?: string | null
 }
 
 interface LocationNode {
@@ -63,6 +67,9 @@ interface ApiResponse<T> {
   success: boolean
 }
 
+// ── Verified filter type ──────────────────────────────────────────────────────
+type VerifiedFilter = 'all' | 'verified' | 'unverified'
+
 function Collections() {
   const [collections, setCollections] = useState<Collection[]>([])
   const [locationTree, setLocationTree] = useState<LocationNode[]>([])
@@ -73,6 +80,8 @@ function Collections() {
   const [rowSelection, setRowSelection] = useState({})
   const [expanded, setExpanded] = useState({})
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'cheque' | 'online'>('all')
+  // ── NEW: verified filter state ─────────────────────────────────────────────
+  const [verifiedFilter, setVerifiedFilter] = useState<VerifiedFilter>('all')
   const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>({})
   const [totalSelectedAmount, setTotalSelectedAmount] = useState<number>(0)
   const today = new Date().toISOString().split('T')[0]
@@ -81,7 +90,13 @@ function Collections() {
   const [isFilterOpen, setIsFilterOpen] = useState(true)
   const [grouping, setGrouping] = useState<string[]>([])
 
-  // Fetch users and build location tree
+  // ── NEW: filter collections in memory based on verifiedFilter ─────────────
+  const filteredCollections = useMemo(() => {
+    if (verifiedFilter === 'all') return collections
+    if (verifiedFilter === 'verified') return collections.filter(c => c.verified)
+    return collections.filter(c => !c.verified)
+  }, [collections, verifiedFilter])
+
   useEffect(() => {
     fetchUsers()
   }, [])
@@ -92,14 +107,10 @@ function Collections() {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/user/fetchUsers`, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
       const result: ApiResponse<User[]> = await response.json()
 
@@ -126,23 +137,19 @@ function Collections() {
   const buildLocationTree = (users: User[]) => {
     const userType = localStorage.getItem('userType') || 'ADMIN'
     const allowedLocations = localStorage.getItem('allowedLocations') || '[]'
-    
+
     let allowedLocationsArray: string[] = []
     try {
       allowedLocationsArray = JSON.parse(allowedLocations)
-      if (!Array.isArray(allowedLocationsArray)) {
-        allowedLocationsArray = []
-      }
-    } catch (error) {
-      console.error('Error parsing allowedLocations:', error)
+      if (!Array.isArray(allowedLocationsArray)) allowedLocationsArray = []
+    } catch {
       allowedLocationsArray = []
     }
 
     const isLocationAllowed = (locationName: string): boolean => {
       if (userType === 'ADMIN') return true
       if (allowedLocationsArray.length === 0) return false
-      console.log("location name", locationName)
-      return allowedLocationsArray.some(loc => 
+      return allowedLocationsArray.some(loc =>
         loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
       )
     }
@@ -156,50 +163,30 @@ function Collections() {
         const isUserAllowed = isLocationAllowed(user.usrnm) || isLocationAllowed(user.username)
         const isDepotAllowed = isLocationAllowed(user.untnm)
         const isStateAllowed = isLocationAllowed(user.stnm)
-
-        console.log(user.stnm, user.untnm)
-        
-        if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) {
-          return
-        }
+        if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) return
       }
 
       if (!stateMap.has(user.stnm)) {
         stateMap.set(user.stnm, {
-          name: user.stnm,
-          code: user.stcd,
-          type: "state",
-          children: [],
-          isSelected: false,
-          isIndeterminate: false,
-          isExpanded: false,
+          name: user.stnm, code: user.stcd, type: "state", children: [],
+          isSelected: false, isIndeterminate: false, isExpanded: false,
         })
       }
 
       const state = stateMap.get(user.stnm)!
       let depot = state.children?.find((d) => d.name === user.untnm)
-      
+
       if (!depot) {
         depot = {
-          name: user.untnm,
-          code: user.untcd,
-          type: "depot",
-          children: [],
-          isSelected: false,
-          isIndeterminate: false,
-          isExpanded: false,
+          name: user.untnm, code: user.untcd, type: "depot", children: [],
+          isSelected: false, isIndeterminate: false, isExpanded: false,
         }
         state.children?.push(depot)
       }
 
       depot.children?.push({
-        name: user.usrnm,
-        code: user.username,
-        type: "user",
-        userId: user.user_id,
-        isSelected: false,
-        isIndeterminate: false,
-        isExpanded: false,
+        name: user.usrnm, code: user.username, type: "user",
+        userId: user.user_id, isSelected: false, isIndeterminate: false, isExpanded: false,
       })
     })
 
@@ -218,15 +205,10 @@ function Collections() {
     setLocationTree((prev) => {
       const newTree = [...prev]
       let current: LocationNode[] = newTree
-
       for (let i = 0; i < path.length; i++) {
-        if (i === path.length - 1) {
-          current[path[i]].isExpanded = !current[path[i]].isExpanded
-        } else {
-          current = current[path[i]].children!
-        }
+        if (i === path.length - 1) current[path[i]].isExpanded = !current[path[i]].isExpanded
+        else current = current[path[i]].children!
       }
-
       return newTree
     })
   }
@@ -237,24 +219,17 @@ function Collections() {
 
       const toggleNode = (nodes: LocationNode[], currentPath: number[], depth: number) => {
         if (depth === currentPath.length) return
-
         const node = nodes[currentPath[depth]]
 
         if (depth === currentPath.length - 1) {
           node.isSelected = !node.isSelected
           node.isIndeterminate = false
-
           const updateChildren = (n: LocationNode, selected: boolean) => {
             n.isSelected = selected
             n.isIndeterminate = false
-            if (n.children) {
-              n.children.forEach((child) => updateChildren(child, selected))
-            }
+            if (n.children) n.children.forEach((child) => updateChildren(child, selected))
           }
-
-          if (node.children) {
-            node.children.forEach((child) => updateChildren(child, node.isSelected))
-          }
+          if (node.children) node.children.forEach((child) => updateChildren(child, node.isSelected))
         } else {
           toggleNode(node.children!, currentPath, depth + 1)
         }
@@ -262,16 +237,12 @@ function Collections() {
         if (node.children) {
           const selectedChildren = node.children.filter((c) => c.isSelected).length
           const indeterminateChildren = node.children.filter((c) => c.isIndeterminate).length
-
           if (selectedChildren === 0 && indeterminateChildren === 0) {
-            node.isSelected = false
-            node.isIndeterminate = false
+            node.isSelected = false; node.isIndeterminate = false
           } else if (selectedChildren === node.children.length) {
-            node.isSelected = true
-            node.isIndeterminate = false
+            node.isSelected = true; node.isIndeterminate = false
           } else {
-            node.isSelected = false
-            node.isIndeterminate = true
+            node.isSelected = false; node.isIndeterminate = true
           }
         }
       }
@@ -331,12 +302,9 @@ function Collections() {
         },
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
       const result: ApiResponse<Collection[]> = await response.json()
-
       if (result.success && result.data) {
         setCollections(result.data)
       } else {
@@ -351,53 +319,36 @@ function Collections() {
   }
 
   const handleAmountChange = (collectionId: string, value: number) => {
-    setEditedAmounts(prev => ({
-      ...prev,
-      [collectionId]: value
-    }))
+    setEditedAmounts(prev => ({ ...prev, [collectionId]: value }))
   }
 
   const handleSelectAllLocations = () => {
     setLocationTree((prev) => {
       const newTree = JSON.parse(JSON.stringify(prev))
       const allSelected = isAllLocationsSelected(newTree)
-      
       const toggleAllNodes = (nodes: LocationNode[], selected: boolean) => {
         nodes.forEach((node) => {
           node.isSelected = selected
           node.isIndeterminate = false
-          if (node.children) {
-            toggleAllNodes(node.children, selected)
-          }
+          if (node.children) toggleAllNodes(node.children, selected)
         })
       }
-      
       toggleAllNodes(newTree, !allSelected)
       return newTree
     })
   }
 
   const isAllLocationsSelected = (tree: LocationNode[]): boolean => {
-    const checkAllSelected = (nodes: LocationNode[]): boolean => {
-      return nodes.every((node) => {
-        if (node.children) {
-          return node.isSelected && checkAllSelected(node.children)
-        }
-        return node.isSelected
-      })
-    }
+    const checkAllSelected = (nodes: LocationNode[]): boolean =>
+      nodes.every((node) => node.children ? node.isSelected && checkAllSelected(node.children) : node.isSelected)
     return checkAllSelected(tree)
   }
 
   const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
-    const checkAnySelected = (nodes: LocationNode[]): boolean => {
-      return nodes.some((node) => {
-        if (node.children) {
-          return node.isSelected || node.isIndeterminate || checkAnySelected(node.children)
-        }
-        return node.isSelected
-      })
-    }
+    const checkAnySelected = (nodes: LocationNode[]): boolean =>
+      nodes.some((node) => node.children
+        ? node.isSelected || node.isIndeterminate || checkAnySelected(node.children)
+        : node.isSelected)
     return checkAnySelected(tree)
   }
 
@@ -408,8 +359,6 @@ function Collections() {
       amount: editedAmounts[row.original.collection_id] ?? row.original.amount
     }))
 
-    console.log("Verifying collections with amounts:", selectedCollectionsList)
-
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/collections/verify`, {
         method: 'POST',
@@ -418,17 +367,15 @@ function Collections() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          collections: selectedCollectionsList
+          collections: selectedCollectionsList,
+          username: localStorage.getItem("username")
         })
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
       const result = await response.json()
       if (result.success) {
-        console.log('Collections verified successfully')
         setRowSelection({})
         setEditedAmounts(prev => {
           const newState = { ...prev }
@@ -456,31 +403,19 @@ function Collections() {
               {node.isExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
             </button>
           )}
-
           <div className="flex items-center gap-2 flex-1">
             <input
               type="checkbox"
               checked={node.isSelected}
-              ref={(el) => {
-                if (el) el.indeterminate = node.isIndeterminate
-              }}
+              ref={(el) => { if (el) el.indeterminate = node.isIndeterminate }}
               onChange={() => toggleSelection(path)}
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
-            <span
-              className={`text-sm ${
-                node.type === "state"
-                  ? "font-semibold text-gray-800"
-                  : node.type === "depot"
-                    ? "font-medium text-gray-700"
-                    : "text-gray-600"
-              }`}
-            >
+            <span className={`text-sm ${node.type === "state" ? "font-semibold text-gray-800" : node.type === "depot" ? "font-medium text-gray-700" : "text-gray-600"}`}>
               {node.name}
             </span>
           </div>
         </div>
-
         {hasChildren && node.isExpanded && (
           <div className="ml-4">
             {node.children!.map((child, index) => renderLocationNode(child, [...path, index], depth + 1))}
@@ -492,27 +427,19 @@ function Collections() {
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
-      case 'cash':
-        return <FaMoneyBillWave className="text-green-600" />
-      case 'cheque':
-        return <FaUniversity className="text-blue-600" />
-      case 'online':
-        return <FaCreditCard className="text-purple-600" />
-      default:
-        return null
+      case 'cash': return <FaMoneyBillWave className="text-green-600" />
+      case 'cheque': return <FaUniversity className="text-blue-600" />
+      case 'online': return <FaCreditCard className="text-purple-600" />
+      default: return null
     }
   }
 
   const getPaymentMethodLabel = (method: string) => {
     switch (method) {
-      case 'cash':
-        return 'Cash'
-      case 'cheque':
-        return 'Cheque'
-      case 'online':
-        return 'Online'
-      default:
-        return method
+      case 'cash': return 'Cash'
+      case 'cheque': return 'Cheque'
+      case 'online': return 'Online'
+      default: return method
     }
   }
 
@@ -573,18 +500,14 @@ function Collections() {
       {
         accessorKey: 'createdAt',
         header: ({ column }) => (
-          <div 
+          <div
             className="flex items-center gap-2 cursor-pointer select-none"
             onClick={column.getToggleSortingHandler()}
           >
             Date
             {column.getIsSorted() && (
               <span>
-                {column.getIsSorted() === 'asc' ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <FaChevronDown className="w-4 h-4" />
-                )}
+                {column.getIsSorted() === 'asc' ? <ChevronUp className="w-4 h-4" /> : <FaChevronDown className="w-4 h-4" />}
               </span>
             )}
           </div>
@@ -592,9 +515,7 @@ function Collections() {
         cell: info => (
           <span className="text-sm text-gray-500">
             {new Date(info.getValue() as string).toLocaleDateString("en-IN", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "2-digit",
+              day: "2-digit", month: "2-digit", year: "2-digit",
             })}
           </span>
         ),
@@ -606,9 +527,7 @@ function Collections() {
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             {getPaymentMethodIcon(row.original.paymentMethod)}
-            <span className="text-sm text-gray-900">
-              {getPaymentMethodLabel(row.original.paymentMethod)}
-            </span>
+            <span className="text-sm text-gray-900">{getPaymentMethodLabel(row.original.paymentMethod)}</span>
           </div>
         ),
         size: 150,
@@ -617,9 +536,40 @@ function Collections() {
         accessorKey: 'otp',
         header: 'OTP',
         cell: ({ row }) => (
-          <div className="flex items-center gap-2 font-bold">
-            {row.original.otp || ""}
-          </div>
+          <div className="flex items-center gap-2 font-bold">{row.original.otp || ""}</div>
+        ),
+        size: 60,
+      },
+      // ── NEW: Verified column ───────────────────────────────────────────────
+      {
+        accessorKey: 'verified',
+        header: 'Verified',
+        cell: ({ row }) => {
+          const { verified, verifiedBy, verifiedAt } = row.original
+          return verified ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit">
+                <FaCheck size={9} />
+                Yes
+              </span>
+              {verifiedBy && (
+                <span className="text-[10px] text-gray-400 leading-tight">{verifiedBy}</span>
+              )}
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-500 w-fit">
+              <FaTimes size={9} />
+              No
+            </span>
+          )
+        },
+        size: 90,
+      },
+      {
+        accessorKey: 'vchno',
+        header: 'Voucher No.',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2 tracking-tighter">{!row.original.verified ? "Not Verified" : row.original.vchno || "Not Available"}</div>
         ),
         size: 60,
       },
@@ -627,18 +577,14 @@ function Collections() {
         accessorKey: 'amount',
         accessorFn: (row) => Number(row.amount),
         header: ({ column }) => (
-          <div 
+          <div
             className="flex items-center gap-2 cursor-pointer select-none justify-end"
             onClick={column.getToggleSortingHandler()}
           >
             Amount
             {column.getIsSorted() && (
               <span>
-                {column.getIsSorted() === 'asc' ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <FaChevronDown className="w-4 h-4" />
-                )}
+                {column.getIsSorted() === 'asc' ? <ChevronUp className="w-4 h-4" /> : <FaChevronDown className="w-4 h-4" />}
               </span>
             )}
           </div>
@@ -664,14 +610,9 @@ function Collections() {
   )
 
   const table = useReactTable({
-    data: collections,
+    data: filteredCollections,   // ← use filtered data, not raw collections
     columns,
-    state: {
-      globalFilter,
-      rowSelection,
-      grouping,
-      expanded
-    },
+    state: { globalFilter, rowSelection, grouping, expanded },
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
@@ -691,27 +632,52 @@ function Collections() {
       const amount = editedAmounts[row.original.collection_id] ?? row.original.amount
       return sum + Number(amount)
     }, 0)
-    
     setTotalSelectedAmount(total)
   }, [rowSelection, collections, editedAmounts])
 
   const selectedCollections = table.getSelectedRowModel().rows.map(row => row.original)
 
+  // ── Verified filter pill button helper ────────────────────────────────────
+  const VerifiedFilterBtn = ({ value, label }: { value: VerifiedFilter; label: string }) => (
+    <button
+      onClick={() => setVerifiedFilter(value)}
+      className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+        verifiedFilter === value
+          ? value === 'verified'
+            ? 'bg-green-600 text-white border-green-600'
+            : value === 'unverified'
+            ? 'bg-red-500 text-white border-red-500'
+            : 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+      }`}
+    >
+      {label}
+      {value !== 'all' && (
+        <span className="ml-1.5 text-xs opacity-80">
+          ({value === 'verified'
+            ? collections.filter(c => c.verified).length
+            : collections.filter(c => !c.verified).length})
+        </span>
+      )}
+    </button>
+  )
+
   return (
     <div className="flex h-full bg-gray-50 w-full max-w-full overflow-hidden">
+      {/* ── Sidebar ── */}
       <motion.div
-        initial={{width: '20rem'}}
-        animate={{width: isFilterOpen ? '20rem' : '2.5rem'}}
-        transition={{duration: 0.3, ease: 'easeInOut'}}
+        initial={{ width: '20rem' }}
+        animate={{ width: isFilterOpen ? '20rem' : '2.5rem' }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="border-r border-gray-200 overflow-y-auto flex-shrink-0"
         style={{ width: "clamp(256px, 20vw, 320px)" }}
       >
         {isFilterOpen ? (
           <ScrollArea className="p-4 max-h-[30vh]">
             <div className="mb-4">
-              <IoIosOpen 
-                onClick={() => setIsFilterOpen(false)} 
-                className="mt-4 absolute cursor-pointer top-0 hover:bg-gray-200 transition-colors duration-100 ease-in w-8 h-8 left-2 flex justify-center items-center" 
+              <IoIosOpen
+                onClick={() => setIsFilterOpen(false)}
+                className="mt-4 absolute cursor-pointer top-0 hover:bg-gray-200 transition-colors duration-100 ease-in w-8 h-8 left-2 flex justify-center items-center"
                 size={28}
               />
               <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
@@ -727,21 +693,13 @@ function Collections() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">From</label>
-                    <input
-                      type="date"
-                      value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
-                    />
+                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">To</label>
-                    <input
-                      type="date"
-                      value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
-                    />
+                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm" />
                   </div>
                 </div>
               </div>
@@ -757,9 +715,7 @@ function Collections() {
                     onChange={handleSelectAllLocations}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm font-medium text-gray-700">
-                    Select All Locations
-                  </span>
+                  <span className="text-sm font-medium text-gray-700">Select All Locations</span>
                 </div>
               </div>
 
@@ -777,21 +733,24 @@ function Collections() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : (
-              <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
+              <div className="space-y-1">
+                {locationTree.map((state, index) => renderLocationNode(state, [index]))}
+              </div>
             )}
           </ScrollArea>
         ) : (
           <div onClick={() => setIsFilterOpen(true)} className="w-10 p-0 hover:bg-gray-200 transition-colors cursor-pointer duration-100 flex justify-center items-center ease-in absolute left-3 h-10">
-            <IoIosOpen size={28}/>
+            <IoIosOpen size={28} />
           </div>
         )}
       </motion.div>
 
+      {/* ── Main content ── */}
       <div className="flex-1 p-6 flex flex-col min-h-0 min-w-0">
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-4">
+        <div className="mb-4">
+          {/* Row 1: title + payment method filter */}
+          <div className="flex justify-between items-center mb-3">
             <h2 className="text-2xl font-bold text-gray-800">Collections</h2>
-            
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700">Payment Method:</span>
               <select
@@ -807,8 +766,17 @@ function Collections() {
             </div>
           </div>
 
+          {/* ── NEW Row 2: Verified filter pills ─────────────────────────── */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-medium text-gray-700">Status:</span>
+            <VerifiedFilterBtn value="all" label="All" />
+            <VerifiedFilterBtn value="verified" label="Verified" />
+            <VerifiedFilterBtn value="unverified" label="Unverified" />
+          </div>
+
+          {/* Row 3: search + CSV buttons */}
           <div className="relative justify-between items-center flex flex-row">
-            <div className="w-1/2 h-10 flex">
+            <div className="w-1/2 h-10 flex relative">
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -821,21 +789,15 @@ function Collections() {
             {collections.length !== 0 && (
               <div className="flex gap-3 justify-center items-center">
                 <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
-                  <CSVLink 
+                  <CSVLink
                     data={[
-                      ["Employee", "Party Name", "Date", "Method", "Amount"], 
+                      ["Employee", "Party Name", "Date", "Method", "Amount", "Verified"],
                       ...collections.map((item) => [
-                        item.empName, 
-                        item.partyName, 
-                        new Date(item.createdAt).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "2-digit",
-                        }), 
-                        item.paymentMethod, 
-                        item.amount
+                        item.empName, item.partyName,
+                        new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+                        item.paymentMethod, item.amount, item.verified ? "Yes" : "No"
                       ])
-                    ]} 
+                    ]}
                     filename="all-collections-csv"
                   >
                     Download CSV (All)
@@ -843,21 +805,15 @@ function Collections() {
                 </button>
                 {selectedCollections.length > 0 && (
                   <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
-                    <CSVLink 
+                    <CSVLink
                       data={[
-                        ["Employee", "Party Name", "Date", "Method", "Amount"], 
+                        ["Employee", "Party Name", "Date", "Method", "Amount", "Verified"],
                         ...selectedCollections.map((item) => [
-                          item.empName, 
-                          item.partyName, 
-                          new Date(item.createdAt).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "2-digit",
-                          }), 
-                          item.paymentMethod, 
-                          item.amount
+                          item.empName, item.partyName,
+                          new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+                          item.paymentMethod, item.amount, item.verified ? "Yes" : "No"
                         ])
-                      ]} 
+                      ]}
                       filename="selected-collections-csv"
                     >
                       Download CSV (Selected)
@@ -869,6 +825,7 @@ function Collections() {
           </div>
         </div>
 
+        {/* Group by buttons */}
         <div className="mb-4 flex items-center gap-4 flex-wrap">
           <span className="text-sm font-medium text-gray-700">Group by:</span>
           {['empName', 'paymentMethod'].map(col => (
@@ -876,9 +833,7 @@ function Collections() {
               key={col}
               onClick={() =>
                 setGrouping(prev =>
-                  prev.includes(col)
-                    ? prev.filter(p => p !== col)
-                    : [...prev, col]
+                  prev.includes(col) ? prev.filter(p => p !== col) : [...prev, col]
                 )
               }
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
@@ -900,6 +855,7 @@ function Collections() {
           )}
         </div>
 
+        {/* Table area */}
         <div className="flex-1 flex flex-col min-h-0">
           {collectionsLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -912,156 +868,148 @@ function Collections() {
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-lg shadow flex-1 min-h-0 border border-gray-200 overflow-hidden">
-                <div className="h-full overflow-auto max-h-[50vh]">
-                  <div className="overflow-x-auto">
-                    <table className="w-full divide-y divide-gray-200" style={{ minWidth: "900px" }}>
-                      <thead className="bg-gray-50 sticky top-0 z-10">
-                        {table.getHeaderGroups().map(headerGroup => (
-                          <tr key={headerGroup.id}>
-                            {headerGroup.headers.map(header => (
-                              <th
-                                key={header.id}
-                                className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                style={{ width: header.getSize() }}
-                              >
-                                {header.isPlaceholder ? null : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
-                              </th>
-                            ))}
-                          </tr>
+              {/*
+                ── SCROLL FIX ────────────────────────────────────────────────
+                Single wrapper with overflow-auto handles BOTH axes. The inner
+                table has minWidth so horizontal scroll kicks in correctly.
+                max-h caps vertical growth so the scrollbar stays in view
+                rather than being pushed below the fold.
+              */}
+              <div className="bg-white rounded-lg shadow border border-gray-200 overflow-auto flex-1 min-h-0" style={{ maxHeight: '55vh' }}>
+                <table className="w-full divide-y divide-gray-200" style={{ minWidth: "900px" }}>
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    {table.getHeaderGroups().map(headerGroup => (
+                      <tr key={headerGroup.id}>
+                        {headerGroup.headers.map(header => (
+                          <th
+                            key={header.id}
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                            style={{ width: header.getSize() }}
+                          >
+                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                          </th>
                         ))}
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {table.getRowModel().rows.map(row => (
-                          <React.Fragment key={row.id}>
-                            <tr className="hover:bg-gray-50">
-                              {row.getVisibleCells().map(cell => (
-                                <td
-                                  key={cell.id}
-                                  className="px-3 py-4 whitespace-nowrap text-sm"
-                                  style={{
-                                    paddingLeft: cell.getIsGrouped() ? `${row.depth * 2 + 1}rem` : undefined,
-                                  }}
+                      </tr>
+                    ))}
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {table.getRowModel().rows.map(row => (
+                      <React.Fragment key={row.id}>
+                        <tr className="hover:bg-gray-50">
+                          {row.getVisibleCells().map(cell => (
+                            <td
+                              key={cell.id}
+                              className="px-3 py-4 whitespace-nowrap text-sm"
+                              style={{
+                                paddingLeft: cell.getIsGrouped() ? `${row.depth * 2 + 1}rem` : undefined,
+                              }}
+                            >
+                              {cell.getIsGrouped() ? (
+                                <button
+                                  onClick={row.getToggleExpandedHandler()}
+                                  className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
                                 >
-                                  {cell.getIsGrouped() ? (
-                                    <button
-                                      onClick={row.getToggleExpandedHandler()}
-                                      className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                      {row.getIsExpanded() ? (
-                                        <FaChevronDown className="w-4 h-4" />
-                                      ) : (
-                                        <FaChevronRight className="w-4 h-4" />
-                                      )}
-                                      {flexRender(cell.column.columnDef.cell, cell.getContext())} ({row.subRows.length})
-                                    </button>
-                                  ) : cell.getIsAggregated() ? (
-                                    <span className="font-medium text-slate-600">
-                                      {flexRender(
-                                        cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell,
-                                        cell.getContext()
-                                      )}
-                                    </span>
-                                  ) : cell.getIsPlaceholder() ? null : (
-                                    flexRender(cell.column.columnDef.cell, cell.getContext())
+                                  {row.getIsExpanded() ? <FaChevronDown className="w-4 h-4" /> : <FaChevronRight className="w-4 h-4" />}
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())} ({row.subRows.length})
+                                </button>
+                              ) : cell.getIsAggregated() ? (
+                                <span className="font-medium text-slate-600">
+                                  {flexRender(
+                                    cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell,
+                                    cell.getContext()
                                   )}
-                                </td>
-                              ))}
-                            </tr>
-                            {row.getIsExpanded() && !row.getIsGrouped() && (
-                              <tr>
-                                <td colSpan={columns.length} className="px-6 py-4 bg-gray-50">
-                                  <div className="space-y-3">
-                                    <h4 className="text-sm font-medium text-gray-900 mb-2">
-                                      Collection Details:
-                                    </h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                      <div>
-                                        <div className="text-xs font-medium text-gray-500 mb-1">
-                                          Collection ID
-                                        </div>
-                                        <div className="text-sm text-gray-900">
-                                          {row.original.collection_id}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className="text-xs font-medium text-gray-500 mb-1">
-                                          Payment Method
-                                        </div>
-                                        <div className="text-sm text-gray-900 flex items-center gap-2">
-                                          {getPaymentMethodIcon(row.original.paymentMethod)}
-                                          {getPaymentMethodLabel(row.original.paymentMethod)}
-                                        </div>
-                                      </div>
+                                </span>
+                              ) : cell.getIsPlaceholder() ? null : (
+                                flexRender(cell.column.columnDef.cell, cell.getContext())
+                              )}
+                            </td>
+                          ))}
+                        </tr>
 
-                                      {row.original.paymentMethod === "cheque" && (
-                                        <>
-                                          <div>
-                                            <div className="text-xs font-medium text-gray-500 mb-1">
-                                              Cheque Number
-                                            </div>
-                                            <div className="text-sm text-gray-900">
-                                              {row.original.chequeNumber || "N/A"}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs font-medium text-gray-500 mb-1">
-                                              Cheque Date
-                                            </div>
-                                            <div className="text-sm text-gray-900">
-                                              {row.original.chequeDate || "N/A"}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs font-medium text-gray-500 mb-1">
-                                              Bank Name
-                                            </div>
-                                            <div className="text-sm text-gray-900">
-                                              {row.original.bankName || "N/A"}
-                                            </div>
-                                          </div>
-                                        </>
-                                      )}
+                        {/* Expanded detail row */}
+                        {row.getIsExpanded() && !row.getIsGrouped() && (
+                          <tr>
+                            <td colSpan={columns.length} className="px-6 py-4 bg-gray-50">
+                              <div className="space-y-3">
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">Collection Details:</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">Collection ID</div>
+                                    <div className="text-sm text-gray-900">{row.original.collection_id}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">Payment Method</div>
+                                    <div className="text-sm text-gray-900 flex items-center gap-2">
+                                      {getPaymentMethodIcon(row.original.paymentMethod)}
+                                      {getPaymentMethodLabel(row.original.paymentMethod)}
+                                    </div>
+                                  </div>
 
-                                      {row.original.paymentMethod === "online" && (
-                                        <>
-                                          <div>
-                                            <div className="text-xs font-medium text-gray-500 mb-1">
-                                              UPI ID
-                                            </div>
-                                            <div className="text-sm text-gray-900">
-                                              {row.original.upiId || "N/A"}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs font-medium text-gray-500 mb-1">
-                                              Transaction ID
-                                            </div>
-                                            <div className="text-sm text-gray-900">
-                                              {row.original.transactionId || "N/A"}
-                                            </div>
-                                          </div>
-                                        </>
+                                  {/* ── Verification detail in expanded row ── */}
+                                  <div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">Verification Status</div>
+                                    <div className="text-sm text-gray-900">
+                                      {row.original.verified ? (
+                                        <span className="text-green-700">
+                                          ✓ Verified by <strong>{row.original.verifiedBy}</strong>
+                                          {row.original.verifiedAt && (
+                                            <> on {new Date(row.original.verifiedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</>
+                                          )}
+                                        </span>
+                                      ) : (
+                                        <span className="text-red-500">✗ Not verified</span>
                                       )}
                                     </div>
                                   </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+
+                                  {row.original.paymentMethod === "cheque" && (
+                                    <>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">Cheque Number</div>
+                                        <div className="text-sm text-gray-900">{row.original.chequeNumber || "N/A"}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">Cheque Date</div>
+                                        <div className="text-sm text-gray-900">{row.original.chequeDate || "N/A"}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">Bank Name</div>
+                                        <div className="text-sm text-gray-900">{row.original.bankName || "N/A"}</div>
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {row.original.paymentMethod === "online" && (
+                                    <>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">UPI ID</div>
+                                        <div className="text-sm text-gray-900">{row.original.upiId || "N/A"}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">Transaction ID</div>
+                                        <div className="text-sm text-gray-900">{row.original.transactionId || "N/A"}</div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
-              <div className="mt-4 flex items-center justify-between bg-white border border-gray-200 rounded-lg p-4">
+              <div className="mt-4 flex items-center justify-between bg-white border border-gray-200 rounded-lg p-4 flex-shrink-0">
                 <div className="text-sm text-gray-600">
                   Showing {table.getRowModel().rows.length} of {table.getFilteredRowModel().rows.length} collections
+                  {verifiedFilter !== 'all' && (
+                    <span className="ml-2 text-gray-400">
+                      (filtered: {verifiedFilter})
+                    </span>
+                  )}
                 </div>
               </div>
 
