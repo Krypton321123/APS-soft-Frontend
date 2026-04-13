@@ -1,10 +1,20 @@
-import { useState, useEffect, useMemo } from "react"
-import React from "react"
-import { FaChevronDown, FaChevronRight, FaSearch, FaFilter, FaCheck, FaMoneyBillWave, FaCreditCard, FaUniversity, FaTimes } from "react-icons/fa"
-import { CSVLink } from "react-csv"
-import { motion } from 'motion/react'
-import { IoIosOpen } from "react-icons/io"
-import { ChevronUp } from 'lucide-react'
+import { useState, useEffect, useMemo } from "react";
+import React from "react";
+import {
+  FaChevronDown,
+  FaChevronRight,
+  FaSearch,
+  FaFilter,
+  FaCheck,
+  FaMoneyBillWave,
+  FaCreditCard,
+  FaUniversity,
+  FaTimes,
+} from "react-icons/fa";
+import { CSVLink } from "react-csv";
+import { motion } from "motion/react";
+import { IoIosOpen } from "react-icons/io";
+import { ChevronUp } from "lucide-react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,549 +23,777 @@ import {
   getExpandedRowModel,
   getGroupedRowModel,
   flexRender,
-} from '@tanstack/react-table'
-import type { ColumnDef } from "@tanstack/react-table"
-import { ScrollArea } from "@/components/ui/scroll-area"
+} from "@tanstack/react-table";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Types
 interface User {
-  user_id: number
-  username: string
-  stnm: string
-  stcd: string
-  untnm: string
-  untcd: string
-  usrnm: string
+  user_id: number;
+  username: string;
+  stnm: string;
+  stcd: string;
+  untnm: string;
+  untcd: string;
+  usrnm: string;
 }
 
 interface Ledger {
-  ledcd: string
-  lednm: string
-  buntcd: string
-  untshnm: string
+  ledcd: string;
+  lednm: string;
+  buntcd: string;
+  untshnm: string;
 }
 
 interface Collection {
-  collection_id: string
-  partyId: string
-  partyName: string
-  empId: string
-  amount: number
-  paymentMethod: 'cash' | 'cheque' | 'online'
-  chequeNumber?: string
-  otp?: string
-  chequeDate?: string
-  bankName?: string
-  upiId?: string
-  transactionId?: string
-  createdAt: string
-  empName: string
-  verified: boolean
-  vchno: string
-  verifiedAt?: string | null
-  verifiedBy?: string | null
-  ledgerId?: string | null
+  collection_id: string;
+  partyId: string;
+  partyName: string;
+  empId: string;
+  amount: number;
+  paymentMethod: "cash" | "cheque" | "online";
+  chequeNumber?: string;
+  otp?: string;
+  chequeDate?: string;
+  bankName?: string;
+  upiId?: string;
+  transactionId?: string;
+  createdAt: string;
+  empName: string;
+  verified: boolean;
+  vchno: string;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  ledgerId?: string | null;
 }
 
 interface LocationNode {
-  name: string
-  code: string
-  type: "state" | "depot" | "user"
-  children?: LocationNode[]
-  userId?: number
-  isSelected: boolean
-  isIndeterminate: boolean
-  isExpanded: boolean
+  name: string;
+  code: string;
+  type: "state" | "depot" | "user";
+  children?: LocationNode[];
+  userId?: number;
+  isSelected: boolean;
+  isIndeterminate: boolean;
+  isExpanded: boolean;
 }
 
 interface ApiResponse<T> {
-  statusCode: number
-  message: string
-  data: T
-  success: boolean
+  statusCode: number;
+  message: string;
+  data: T;
+  success: boolean;
 }
 
-type VerifiedFilter = 'all' | 'verified' | 'unverified'
+type VerifiedFilter = "all" | "verified" | "unverified";
 
 function Collections() {
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [ledgers, setLedgers] = useState<Ledger[]>([])
-  const [locationTree, setLocationTree] = useState<LocationNode[]>([])
-  const [loading, setLoading] = useState(false)
-  const [collectionsLoading, setCollectionsLoading] = useState(false)
-  const [globalFilter, setGlobalFilter] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [rowSelection, setRowSelection] = useState({})
-  const [expanded, setExpanded] = useState({})
-  const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'cheque' | 'online'>('all')
-  const [verifiedFilter, setVerifiedFilter] = useState<VerifiedFilter>('all')
-  const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>({})
-  const [selectedLedgers, setSelectedLedgers] = useState<Record<string, string>>({})
-  // ── Global ledger applied to all unverified collections ───────────────────
-  const [globalLedger, setGlobalLedger] = useState<string>("")
-  const [totalSelectedAmount, setTotalSelectedAmount] = useState<number>(0)
-  const today = new Date().toISOString().split('T')[0]
-  const [fromDate, setFromDate] = useState(today)
-  const [toDate, setToDate] = useState(today)
-  const [isFilterOpen, setIsFilterOpen] = useState(true)
-  const [grouping, setGrouping] = useState<string[]>([])
-
-  // ── Resolve effective ledger for a collection (per-row overrides global) ──
-  const getEffectiveLedger = (collectionId: string) =>
-    selectedLedgers[collectionId] ?? globalLedger
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const [locationTree, setLocationTree] = useState<LocationNode[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [rowSelection, setRowSelection] = useState({});
+  const [expanded, setExpanded] = useState({});
+  const [paymentFilter, setPaymentFilter] = useState<
+    "all" | "cash" | "cheque" | "online"
+  >("all");
+  const [verifiedFilter, setVerifiedFilter] = useState<VerifiedFilter>("all");
+  const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>(
+    {},
+  );
+  const [totalSelectedAmount, setTotalSelectedAmount] = useState<number>(0);
+  const today = new Date().toISOString().split("T")[0];
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(today);
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
+  const [grouping, setGrouping] = useState<string[]>([]);
 
   const filteredCollections = useMemo(() => {
-    if (verifiedFilter === 'all') return collections
-    if (verifiedFilter === 'verified') return collections.filter(c => c.verified)
-    return collections.filter(c => !c.verified)
-  }, [collections, verifiedFilter])
+    if (verifiedFilter === "all") return collections;
+    if (verifiedFilter === "verified")
+      return collections.filter((c) => c.verified);
+    return collections.filter((c) => !c.verified);
+  }, [collections, verifiedFilter]);
 
-  useEffect(() => { fetchUsers() }, [])
+  // ── Resolve effective ledger for a collection (per-row overrides global) ──
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   const fetchUsers = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/user/fetchUsers`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      })
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      const result: ApiResponse<User[]> = await response.json()
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/user/fetchUsers`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      if (!response.ok)
+        throw new Error(`HTTP error! status: ${response.status}`);
+      const result: ApiResponse<User[]> = await response.json();
       if (result.success && result.data) {
-        buildLocationTree(result.data)
+        buildLocationTree(result.data);
       } else {
-        throw new Error(result.message || "Failed to fetch users")
+        throw new Error(result.message || "Failed to fetch users");
       }
     } catch (error) {
-      console.error("Error fetching users:", error)
-      setError(error instanceof Error ? error.message : "Failed to fetch users")
+      console.error("Error fetching users:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to fetch users",
+      );
       const mockUsers: User[] = [
-        { user_id: 1, username: "emp1", stnm: "ASSAM", stcd: "AS", untnm: "GUWAHATI", untcd: "GUW", usrnm: "John Doe" },
-        { user_id: 2, username: "emp2", stnm: "ASSAM", stcd: "AS", untnm: "SILCHAR", untcd: "SIL", usrnm: "Jane Smith" },
-        { user_id: 3, username: "emp3", stnm: "BIHAR", stcd: "BR", untnm: "PATNA", untcd: "PAT", usrnm: "Bob Wilson" },
-      ]
-      buildLocationTree(mockUsers)
+        {
+          user_id: 1,
+          username: "emp1",
+          stnm: "ASSAM",
+          stcd: "AS",
+          untnm: "GUWAHATI",
+          untcd: "GUW",
+          usrnm: "John Doe",
+        },
+        {
+          user_id: 2,
+          username: "emp2",
+          stnm: "ASSAM",
+          stcd: "AS",
+          untnm: "SILCHAR",
+          untcd: "SIL",
+          usrnm: "Jane Smith",
+        },
+        {
+          user_id: 3,
+          username: "emp3",
+          stnm: "BIHAR",
+          stcd: "BR",
+          untnm: "PATNA",
+          untcd: "PAT",
+          usrnm: "Bob Wilson",
+        },
+      ];
+      buildLocationTree(mockUsers);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const buildLocationTree = (users: User[]) => {
-    const userType = localStorage.getItem('userType') || 'ADMIN'
-    const allowedLocations = localStorage.getItem('allowedLocations') || '[]'
-    let allowedLocationsArray: string[] = []
+    const userType = localStorage.getItem("userType") || "ADMIN";
+    const allowedLocations = localStorage.getItem("allowedLocations") || "[]";
+    let allowedLocationsArray: string[] = [];
     try {
-      allowedLocationsArray = JSON.parse(allowedLocations)
-      if (!Array.isArray(allowedLocationsArray)) allowedLocationsArray = []
-    } catch { allowedLocationsArray = [] }
-
-    const isLocationAllowed = (locationName: string): boolean => {
-      if (userType === 'ADMIN') return true
-      if (allowedLocationsArray.length === 0) return false
-      return allowedLocationsArray.some(loc => loc.toLowerCase() === locationName.toLowerCase().slice(0, 3))
+      allowedLocationsArray = JSON.parse(allowedLocations);
+      if (!Array.isArray(allowedLocationsArray)) allowedLocationsArray = [];
+    } catch {
+      allowedLocationsArray = [];
     }
 
-    const stateMap = new Map<string, LocationNode>()
+    const isLocationAllowed = (locationName: string): boolean => {
+      if (userType === "ADMIN") return true;
+      if (allowedLocationsArray.length === 0) return false;
+      return allowedLocationsArray.some(
+        (loc) => loc.toLowerCase() === locationName.toLowerCase().slice(0, 3),
+      );
+    };
+
+    const stateMap = new Map<string, LocationNode>();
     users.forEach((user) => {
-      if (!user.stnm || !user.untnm) return
-      if (userType === 'OPERATOR') {
-        const isUserAllowed = isLocationAllowed(user.usrnm) || isLocationAllowed(user.username)
-        const isDepotAllowed = isLocationAllowed(user.untnm)
-        const isStateAllowed = isLocationAllowed(user.stnm)
-        if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) return
+      if (!user.stnm || !user.untnm) return;
+      if (userType === "OPERATOR") {
+        const isUserAllowed =
+          isLocationAllowed(user.usrnm) || isLocationAllowed(user.username);
+        const isDepotAllowed = isLocationAllowed(user.untnm);
+        const isStateAllowed = isLocationAllowed(user.stnm);
+        if (!isUserAllowed && !isDepotAllowed && !isStateAllowed) return;
       }
       if (!stateMap.has(user.stnm)) {
-        stateMap.set(user.stnm, { name: user.stnm, code: user.stcd, type: "state", children: [], isSelected: false, isIndeterminate: false, isExpanded: false })
+        stateMap.set(user.stnm, {
+          name: user.stnm,
+          code: user.stcd,
+          type: "state",
+          children: [],
+          isSelected: false,
+          isIndeterminate: false,
+          isExpanded: false,
+        });
       }
-      const state = stateMap.get(user.stnm)!
-      let depot = state.children?.find((d) => d.name === user.untnm)
+      const state = stateMap.get(user.stnm)!;
+      let depot = state.children?.find((d) => d.name === user.untnm);
       if (!depot) {
-        depot = { name: user.untnm, code: user.untcd, type: "depot", children: [], isSelected: false, isIndeterminate: false, isExpanded: false }
-        state.children?.push(depot)
+        depot = {
+          name: user.untnm,
+          code: user.untcd,
+          type: "depot",
+          children: [],
+          isSelected: false,
+          isIndeterminate: false,
+          isExpanded: false,
+        };
+        state.children?.push(depot);
       }
-      depot.children?.push({ name: user.usrnm, code: user.username, type: "user", userId: user.user_id, isSelected: false, isIndeterminate: false, isExpanded: false })
-    })
+      depot.children?.push({
+        name: user.usrnm,
+        code: user.username,
+        type: "user",
+        userId: user.user_id,
+        isSelected: false,
+        isIndeterminate: false,
+        isExpanded: false,
+      });
+    });
 
     const tree = Array.from(stateMap.values())
-      .filter(state => state.children && state.children.length > 0)
-      .map(state => ({ ...state, children: state.children?.filter(depot => depot.children && depot.children.length > 0) }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-    setLocationTree(tree)
-  }
+      .filter((state) => state.children && state.children.length > 0)
+      .map((state) => ({
+        ...state,
+        children: state.children?.filter(
+          (depot) => depot.children && depot.children.length > 0,
+        ),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setLocationTree(tree);
+  };
 
   const toggleExpand = (path: number[]) => {
     setLocationTree((prev) => {
-      const newTree = [...prev]
-      let current: LocationNode[] = newTree
+      const newTree = [...prev];
+      let current: LocationNode[] = newTree;
       for (let i = 0; i < path.length; i++) {
-        if (i === path.length - 1) current[path[i]].isExpanded = !current[path[i]].isExpanded
-        else current = current[path[i]].children!
+        if (i === path.length - 1)
+          current[path[i]].isExpanded = !current[path[i]].isExpanded;
+        else current = current[path[i]].children!;
       }
-      return newTree
-    })
-  }
+      return newTree;
+    });
+  };
 
   const toggleSelection = (path: number[]) => {
     setLocationTree((prev) => {
-      const newTree = JSON.parse(JSON.stringify(prev))
-      const toggleNode = (nodes: LocationNode[], currentPath: number[], depth: number) => {
-        if (depth === currentPath.length) return
-        const node = nodes[currentPath[depth]]
+      const newTree = JSON.parse(JSON.stringify(prev));
+      const toggleNode = (
+        nodes: LocationNode[],
+        currentPath: number[],
+        depth: number,
+      ) => {
+        if (depth === currentPath.length) return;
+        const node = nodes[currentPath[depth]];
         if (depth === currentPath.length - 1) {
-          node.isSelected = !node.isSelected
-          node.isIndeterminate = false
+          node.isSelected = !node.isSelected;
+          node.isIndeterminate = false;
           const updateChildren = (n: LocationNode, selected: boolean) => {
-            n.isSelected = selected; n.isIndeterminate = false
-            if (n.children) n.children.forEach((child) => updateChildren(child, selected))
-          }
-          if (node.children) node.children.forEach((child) => updateChildren(child, node.isSelected))
+            n.isSelected = selected;
+            n.isIndeterminate = false;
+            if (n.children)
+              n.children.forEach((child) => updateChildren(child, selected));
+          };
+          if (node.children)
+            node.children.forEach((child) =>
+              updateChildren(child, node.isSelected),
+            );
         } else {
-          toggleNode(node.children!, currentPath, depth + 1)
+          toggleNode(node.children!, currentPath, depth + 1);
         }
         if (node.children) {
-          const selectedChildren = node.children.filter((c) => c.isSelected).length
-          const indeterminateChildren = node.children.filter((c) => c.isIndeterminate).length
-          if (selectedChildren === 0 && indeterminateChildren === 0) { node.isSelected = false; node.isIndeterminate = false }
-          else if (selectedChildren === node.children.length) { node.isSelected = true; node.isIndeterminate = false }
-          else { node.isSelected = false; node.isIndeterminate = true }
+          const selectedChildren = node.children.filter(
+            (c) => c.isSelected,
+          ).length;
+          const indeterminateChildren = node.children.filter(
+            (c) => c.isIndeterminate,
+          ).length;
+          if (selectedChildren === 0 && indeterminateChildren === 0) {
+            node.isSelected = false;
+            node.isIndeterminate = false;
+          } else if (selectedChildren === node.children.length) {
+            node.isSelected = true;
+            node.isIndeterminate = false;
+          } else {
+            node.isSelected = false;
+            node.isIndeterminate = true;
+          }
         }
-      }
-      toggleNode(newTree, path, 0)
-      return newTree
-    })
-  }
+      };
+      toggleNode(newTree, path, 0);
+      return newTree;
+    });
+  };
 
   const getSelectedItems = () => {
-    const states: string[] = [], depots: string[] = [], employees: string[] = []
+    const states: string[] = [],
+      depots: string[] = [],
+      employees: string[] = [];
     const traverse = (nodes: LocationNode[]) => {
       nodes.forEach((node) => {
         if (node.isSelected) {
-          if (node.type === "state") states.push(node.name)
-          else if (node.type === "depot") depots.push(node.name)
-          else if (node.type === "user") employees.push(node.userId!.toString())
+          if (node.type === "state") states.push(node.name);
+          else if (node.type === "depot") depots.push(node.name);
+          else if (node.type === "user")
+            employees.push(node.userId!.toString());
         }
-        if (node.children) traverse(node.children)
-      })
-    }
-    traverse(locationTree)
-    return { states, depots, employees }
-  }
+        if (node.children) traverse(node.children);
+      });
+    };
+    traverse(locationTree);
+    return { states, depots, employees };
+  };
 
   useEffect(() => {
-    const { states, depots, employees } = getSelectedItems()
+    const { states, depots, employees } = getSelectedItems();
     if (states.length > 0 || depots.length > 0 || employees.length > 0) {
-      fetchCollections(states, depots, employees)
+      fetchCollections(states, depots, employees);
     } else {
-      setCollections([])
+      setCollections([]);
     }
-  }, [locationTree, paymentFilter, fromDate, toDate])
+  }, [locationTree, paymentFilter, fromDate, toDate]);
 
-  const fetchCollections = async (states: string[], depots: string[], employees: string[]) => {
-    setCollectionsLoading(true)
-    setError(null)
+  const fetchCollections = async (
+    states: string[],
+    depots: string[],
+    employees: string[],
+  ) => {
+    setCollectionsLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams()
-      if (states.length > 0) params.set("states", states.join(","))
-      if (depots.length > 0) params.set("depots", depots.join(","))
-      if (employees.length > 0) params.set("employees", employees.join(","))
-      if (paymentFilter !== 'all') params.set("paymentMethod", paymentFilter)
-      params.set('fromDate', fromDate)
-      params.set('toDate', toDate)
+      const params = new URLSearchParams();
+      if (states.length > 0) params.set("states", states.join(","));
+      if (depots.length > 0) params.set("depots", depots.join(","));
+      if (employees.length > 0) params.set("employees", employees.join(","));
+      if (paymentFilter !== "all") params.set("paymentMethod", paymentFilter);
+      params.set("fromDate", fromDate);
+      params.set("toDate", toDate);
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/collections/by-location?${params.toString()}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      })
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/collections/by-location?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        },
+      );
+      if (!response.ok)
+        throw new Error(`HTTP error! status: ${response.status}`);
 
-      const result: ApiResponse<{ collections: Collection[]; ledgers: Ledger[] }> = await response.json()
+      const result: ApiResponse<{
+        collections: Collection[];
+        ledgers: Ledger[];
+      }> = await response.json();
       if (result.success && result.data) {
-        setCollections(result.data.collections)
-        setLedgers(result.data.ledgers)
-
-        // Pre-populate selectedLedgers for collections that already have a ledgerId
-        const preSelected: Record<string, string> = {}
-        result.data.collections.forEach(c => {
-          if (c.ledgerId) preSelected[c.collection_id] = c.ledgerId
-        })
-        setSelectedLedgers(preSelected)
+        setCollections(result.data.collections);
+        setLedgers(result.data.ledgers);
       } else {
-        throw new Error(result.message || "Failed to fetch collections")
+        throw new Error(result.message || "Failed to fetch collections");
       }
     } catch (error) {
-      console.error("Error fetching collections:", error)
-      setError(error instanceof Error ? error.message : "Failed to fetch collections")
+      console.error("Error fetching collections:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to fetch collections",
+      );
     } finally {
-      setCollectionsLoading(false)
+      setCollectionsLoading(false);
     }
-  }
+  };
 
   const handleAmountChange = (collectionId: string, value: number) => {
-    setEditedAmounts(prev => ({ ...prev, [collectionId]: value }))
-  }
+    setEditedAmounts((prev) => ({ ...prev, [collectionId]: value }));
+  };
 
   const handleSelectAllLocations = () => {
     setLocationTree((prev) => {
-      const newTree = JSON.parse(JSON.stringify(prev))
-      const allSelected = isAllLocationsSelected(newTree)
+      const newTree = JSON.parse(JSON.stringify(prev));
+      const allSelected = isAllLocationsSelected(newTree);
       const toggleAllNodes = (nodes: LocationNode[], selected: boolean) => {
-        nodes.forEach((node) => { node.isSelected = selected; node.isIndeterminate = false; if (node.children) toggleAllNodes(node.children, selected) })
-      }
-      toggleAllNodes(newTree, !allSelected)
-      return newTree
-    })
-  }
+        nodes.forEach((node) => {
+          node.isSelected = selected;
+          node.isIndeterminate = false;
+          if (node.children) toggleAllNodes(node.children, selected);
+        });
+      };
+      toggleAllNodes(newTree, !allSelected);
+      return newTree;
+    });
+  };
 
   const isAllLocationsSelected = (tree: LocationNode[]): boolean => {
     const checkAllSelected = (nodes: LocationNode[]): boolean =>
-      nodes.every((node) => node.children ? node.isSelected && checkAllSelected(node.children) : node.isSelected)
-    return checkAllSelected(tree)
-  }
+      nodes.every((node) =>
+        node.children
+          ? node.isSelected && checkAllSelected(node.children)
+          : node.isSelected,
+      );
+    return checkAllSelected(tree);
+  };
 
   const isAnyLocationSelected = (tree: LocationNode[]): boolean => {
     const checkAnySelected = (nodes: LocationNode[]): boolean =>
-      nodes.some((node) => node.children ? node.isSelected || node.isIndeterminate || checkAnySelected(node.children) : node.isSelected)
-    return checkAnySelected(tree)
-  }
+      nodes.some((node) =>
+        node.children
+          ? node.isSelected ||
+            node.isIndeterminate ||
+            checkAnySelected(node.children)
+          : node.isSelected,
+      );
+    return checkAnySelected(tree);
+  };
 
   const handleVerifyCollections = async () => {
-    const selectedRows = table.getSelectedRowModel().rows
+    const selectedRows = table.getSelectedRowModel().rows;
 
-    const selectedCollectionsList = selectedRows.map(row => ({
+    const selectedCollectionsList = selectedRows.map((row) => ({
       collectionId: row.original.collection_id,
       amount: editedAmounts[row.original.collection_id] ?? row.original.amount,
-      // Use effective ledger (per-row override falls back to global)
-      ledgerId: getEffectiveLedger(row.original.collection_id) || null,
-    }))
+    }));
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/collections/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ledger: globalLedger, collections: selectedCollectionsList, username: localStorage.getItem("username") })
-      })
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/collections/verify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({
+            collections: selectedCollectionsList,
+            username: localStorage.getItem("username"),
+          }),
+        },
+      );
 
-      const result = await response.json()
+      const result = await response.json(); // always read body first
+
+      if (result.statusCode === 422) {
+        alert(result.message || "No cash ledger found for this location.");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || `HTTP error! status: ${response.status}`,
+        );
+      }
+
       if (result.success) {
-        setRowSelection({})
-        setEditedAmounts(prev => {
-          const newState = { ...prev }
-          selectedRows.forEach(row => delete newState[row.original.collection_id])
-          return newState
-        })
-        // ── Auto-refetch so the table reflects verified status immediately ──
-        const { states, depots, employees } = getSelectedItems()
+        setRowSelection({});
+        setEditedAmounts((prev) => {
+          const newState = { ...prev };
+          selectedRows.forEach(
+            (row) => delete newState[row.original.collection_id],
+          );
+          return newState;
+        });
+        const { states, depots, employees } = getSelectedItems();
         if (states.length > 0 || depots.length > 0 || employees.length > 0) {
-          fetchCollections(states, depots, employees)
+          fetchCollections(states, depots, employees);
         }
       } else {
-        throw new Error(result.message || 'Failed to verify collections')
+        throw new Error(result.message || "Failed to verify collections");
       }
     } catch (error) {
-      console.error("Error verifying collections:", error)
-      setError(error instanceof Error ? error.message : 'Failed to verify collections')
+      console.error("Error verifying collections:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to verify collections",
+      );
     }
-  }
+  };
 
-  const renderLocationNode = (node: LocationNode, path: number[], depth = 0) => {
-    const hasChildren = node.children && node.children.length > 0
-    const indentClass = depth === 0 ? "" : depth === 1 ? "ml-6" : "ml-12"
+  const renderLocationNode = (
+    node: LocationNode,
+    path: number[],
+    depth = 0,
+  ) => {
+    const hasChildren = node.children && node.children.length > 0;
+    const indentClass = depth === 0 ? "" : depth === 1 ? "ml-6" : "ml-12";
     return (
       <div key={`${node.name}-${path.join("-")}`} className={indentClass}>
         <div className="flex items-center py-1 hover:bg-gray-50 rounded-lg px-2">
           {hasChildren && (
-            <button onClick={() => toggleExpand(path)} className="mr-2 p-1 hover:bg-gray-200 rounded">
-              {node.isExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+            <button
+              onClick={() => toggleExpand(path)}
+              className="mr-2 p-1 hover:bg-gray-200 rounded"
+            >
+              {node.isExpanded ? (
+                <FaChevronDown size={12} />
+              ) : (
+                <FaChevronRight size={12} />
+              )}
             </button>
           )}
           <div className="flex items-center gap-2 flex-1">
-            <input type="checkbox" checked={node.isSelected}
-              ref={(el) => { if (el) el.indeterminate = node.isIndeterminate }}
+            <input
+              type="checkbox"
+              checked={node.isSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = node.isIndeterminate;
+              }}
               onChange={() => toggleSelection(path)}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
-            <span className={`text-sm ${node.type === "state" ? "font-semibold text-gray-800" : node.type === "depot" ? "font-medium text-gray-700" : "text-gray-600"}`}>
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <span
+              className={`text-sm ${node.type === "state" ? "font-semibold text-gray-800" : node.type === "depot" ? "font-medium text-gray-700" : "text-gray-600"}`}
+            >
               {node.name}
             </span>
           </div>
         </div>
         {hasChildren && node.isExpanded && (
           <div className="ml-4">
-            {node.children!.map((child, index) => renderLocationNode(child, [...path, index], depth + 1))}
+            {node.children!.map((child, index) =>
+              renderLocationNode(child, [...path, index], depth + 1),
+            )}
           </div>
         )}
       </div>
-    )
-  }
+    );
+  };
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
-      case 'cash': return <FaMoneyBillWave className="text-green-600" />
-      case 'cheque': return <FaUniversity className="text-blue-600" />
-      case 'online': return <FaCreditCard className="text-purple-600" />
-      default: return null
+      case "cash":
+        return <FaMoneyBillWave className="text-green-600" />;
+      case "cheque":
+        return <FaUniversity className="text-blue-600" />;
+      case "online":
+        return <FaCreditCard className="text-purple-600" />;
+      default:
+        return null;
     }
-  }
+  };
 
   const getPaymentMethodLabel = (method: string) => {
     switch (method) {
-      case 'cash': return 'Cash'
-      case 'cheque': return 'Cheque'
-      case 'online': return 'Online'
-      default: return method
+      case "cash":
+        return "Cash";
+      case "cheque":
+        return "Cheque";
+      case "online":
+        return "Online";
+      default:
+        return method;
     }
-  }
+  };
 
   const columns = useMemo<ColumnDef<Collection>[]>(
     () => [
       {
-        id: 'select',
+        id: "select",
         header: ({ table }) => (
-          <input type="checkbox" checked={table.getIsAllRowsSelected()}
+          <input
+            type="checkbox"
+            checked={table.getIsAllRowsSelected()}
             onChange={table.getToggleAllRowsSelectedHandler()}
-            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+          />
         ),
         cell: ({ row }) => (
-          <input type="checkbox" checked={row.getIsSelected()}
+          <input
+            type="checkbox"
+            checked={row.getIsSelected()}
             onChange={row.getToggleSelectedHandler()}
-            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+          />
         ),
         size: 40,
       },
       {
-        id: 'expander',
-        header: 'Expand',
+        id: "expander",
+        header: "Expand",
         cell: ({ row }) => (
-          <button onClick={row.getToggleExpandedHandler()} className="p-1 hover:bg-gray-200 rounded transition-colors">
-            {row.getIsExpanded() ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+          <button
+            onClick={row.getToggleExpandedHandler()}
+            className="p-1 hover:bg-gray-200 rounded transition-colors"
+          >
+            {row.getIsExpanded() ? (
+              <FaChevronDown size={14} />
+            ) : (
+              <FaChevronRight size={14} />
+            )}
           </button>
         ),
         size: 50,
       },
       {
-        accessorKey: 'empName',
-        header: 'Employee',
-        cell: info => <span className="text-sm text-gray-900 font-medium">{info.getValue() as string}</span>,
+        accessorKey: "empName",
+        header: "Employee",
+        cell: (info) => (
+          <span className="text-sm text-gray-900 font-medium">
+            {info.getValue() as string}
+          </span>
+        ),
         size: 120,
       },
       {
-        accessorKey: 'partyName',
-        header: 'Party Name',
+        accessorKey: "partyName",
+        header: "Party Name",
         cell: ({ row }) => (
           <div>
-            <div className="text-sm font-medium text-gray-900 w-52 truncate" title={row.original.partyName}>{row.original.partyName}</div>
+            <div
+              className="text-sm font-medium text-gray-900 w-52 truncate"
+              title={row.original.partyName}
+            >
+              {row.original.partyName}
+            </div>
             <div className="text-xs text-gray-500">{row.original.partyId}</div>
           </div>
         ),
         minSize: 200,
       },
       {
-        accessorKey: 'createdAt',
+        accessorKey: "createdAt",
         header: ({ column }) => (
-          <div className="flex items-center gap-2 cursor-pointer select-none" onClick={column.getToggleSortingHandler()}>
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={column.getToggleSortingHandler()}
+          >
             Date
-            {column.getIsSorted() && <span>{column.getIsSorted() === 'asc' ? <ChevronUp className="w-4 h-4" /> : <FaChevronDown className="w-4 h-4" />}</span>}
+            {column.getIsSorted() && (
+              <span>
+                {column.getIsSorted() === "asc" ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <FaChevronDown className="w-4 h-4" />
+                )}
+              </span>
+            )}
           </div>
         ),
-        cell: info => (
+        cell: (info) => (
           <span className="text-sm text-gray-500">
-            {new Date(info.getValue() as string).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+            {new Date(info.getValue() as string).toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            })}
           </span>
         ),
         size: 100,
       },
       {
-        accessorKey: 'paymentMethod',
-        header: 'Payment Method',
+        accessorKey: "paymentMethod",
+        header: "Payment Method",
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             {getPaymentMethodIcon(row.original.paymentMethod)}
-            <span className="text-sm text-gray-900">{getPaymentMethodLabel(row.original.paymentMethod)}</span>
+            <span className="text-sm text-gray-900">
+              {getPaymentMethodLabel(row.original.paymentMethod)}
+            </span>
           </div>
         ),
         size: 150,
       },
       {
-        accessorKey: 'otp',
-        header: 'OTP',
-        cell: ({ row }) => <div className="font-bold text-sm">{row.original.otp || ""}</div>,
+        accessorKey: "otp",
+        header: "OTP",
+        cell: ({ row }) => (
+          <div className="font-bold text-sm">{row.original.otp || ""}</div>
+        ),
         size: 70,
       },
       {
-        accessorKey: 'verified',
-        header: 'Verified',
+        accessorKey: "verified",
+        header: "Verified",
         cell: ({ row }) => {
-          const { verified, verifiedBy } = row.original
+          const { verified, verifiedBy } = row.original;
           return verified ? (
             <div className="flex flex-col gap-0.5">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit">
                 <FaCheck size={9} /> Yes
               </span>
-              {verifiedBy && <span className="text-[10px] text-gray-400 leading-tight">{verifiedBy}</span>}
+              {verifiedBy && (
+                <span className="text-[10px] text-gray-400 leading-tight">
+                  {verifiedBy}
+                </span>
+              )}
             </div>
           ) : (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-500 w-fit">
               <FaTimes size={9} /> No
             </span>
-          )
+          );
         },
         size: 90,
       },
       {
-        accessorKey: 'vchno',
-        header: 'Voucher No.',
+        accessorKey: "vchno",
+        header: "Voucher No.",
         cell: ({ row }) => (
           <div className="text-sm tracking-tighter text-gray-700">
-            {!row.original.verified
-              ? <span className="text-gray-400 italic text-xs">Not Verified</span>
-              : row.original.vchno || <span className="text-gray-400 italic text-xs">N/A</span>}
+            {!row.original.verified ? (
+              <span className="text-gray-400 italic text-xs">Not Verified</span>
+            ) : (
+              row.original.vchno || (
+                <span className="text-gray-400 italic text-xs">N/A</span>
+              )
+            )}
           </div>
         ),
         size: 110,
       },
       // ── Ledger column — shows N/A for unverified (selection is global) ─────
       {
-        id: 'ledger',
-        header: 'Ledger',
+        id: "ledger",
+        header: "Ledger",
         cell: ({ row }) => {
-          if (row.original.verified) {
-            const assignedLedger = ledgers.find(l => l.ledcd === row.original.ledgerId)
-            return (
-              <span className="text-xs text-gray-500 italic">
-                {assignedLedger ? `${assignedLedger.lednm} (${assignedLedger.untshnm})` : "—"}
-              </span>
-            )
-          }
-          // Unverified: ledger is set globally, just reflect what will be applied
-          const effective = getEffectiveLedger(row.original.collection_id)
-          const effectiveLedger = ledgers.find(l => l.ledcd === effective)
+          const assignedLedger = ledgers.find(
+            (l) => l.ledcd === row.original.ledgerId,
+          );
           return (
-            <span className="text-xs text-gray-400 italic">
-              {effectiveLedger ? `${effectiveLedger.lednm} (${effectiveLedger.untshnm})` : "N/A"}
+            <span className="text-xs text-gray-500 italic">
+              {assignedLedger ? (
+                `${assignedLedger.lednm} (${assignedLedger.untshnm})`
+              ) : row.original.verified ? (
+                "—"
+              ) : (
+                <span className="text-gray-400">Auto on verify</span>
+              )}
             </span>
-          )
+          );
         },
         size: 210,
       },
       {
-        accessorKey: 'amount',
+        accessorKey: "amount",
         accessorFn: (row) => Number(row.amount),
         header: ({ column }) => (
-          <div className="flex items-center gap-2 cursor-pointer select-none justify-end" onClick={column.getToggleSortingHandler()}>
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none justify-end"
+            onClick={column.getToggleSortingHandler()}
+          >
             Amount
-            {column.getIsSorted() && <span>{column.getIsSorted() === 'asc' ? <ChevronUp className="w-4 h-4" /> : <FaChevronDown className="w-4 h-4" />}</span>}
+            {column.getIsSorted() && (
+              <span>
+                {column.getIsSorted() === "asc" ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <FaChevronDown className="w-4 h-4" />
+                )}
+              </span>
+            )}
           </div>
         ),
         cell: ({ row }) => (
           <input
             type="number"
-            value={editedAmounts[row.original.collection_id] ?? Number(row.original.amount)}
-            onChange={(e) => handleAmountChange(row.original.collection_id, Number(e.target.value))}
+            value={
+              editedAmounts[row.original.collection_id] ??
+              Number(row.original.amount)
+            }
+            onChange={(e) =>
+              handleAmountChange(
+                row.original.collection_id,
+                Number(e.target.value),
+              )
+            }
             className="w-24 text-right border rounded px-2 py-1 text-sm"
           />
         ),
-        aggregationFn: 'sum',
+        aggregationFn: "sum",
         aggregatedCell: ({ getValue }) => (
           <span className="text-sm font-bold text-blue-600">
             Total: ₹{Math.round(getValue() as number).toLocaleString("en-IN")}
@@ -564,8 +802,8 @@ function Collections() {
         size: 120,
       },
     ],
-    [editedAmounts, selectedLedgers, ledgers, globalLedger]
-  )
+    [editedAmounts, ledgers],
+  );
 
   const table = useReactTable({
     data: filteredCollections,
@@ -582,95 +820,140 @@ function Collections() {
     onExpandedChange: setExpanded,
     getGroupedRowModel: getGroupedRowModel(),
     getRowCanExpand: () => true,
-  })
+  });
 
   useEffect(() => {
-    const selectedRows = table.getSelectedRowModel().rows
+    const selectedRows = table.getSelectedRowModel().rows;
     const total = selectedRows.reduce((sum, row) => {
-      const amount = editedAmounts[row.original.collection_id] ?? row.original.amount
-      return sum + Number(amount)
-    }, 0)
-    setTotalSelectedAmount(total)
-  }, [rowSelection, collections, editedAmounts])
+      const amount =
+        editedAmounts[row.original.collection_id] ?? row.original.amount;
+      return sum + Number(amount);
+    }, 0);
+    setTotalSelectedAmount(total);
+  }, [rowSelection, collections, editedAmounts]);
 
-  const selectedCollections = table.getSelectedRowModel().rows.map(row => row.original)
+  const selectedCollections = table
+    .getSelectedRowModel()
+    .rows.map((row) => row.original);
 
-  // Warn if any selected rows are missing an effective ledger
-  const selectedMissingLedger = table.getSelectedRowModel().rows.filter(
-    row => !getEffectiveLedger(row.original.collection_id)
-  ).length
-
-  const VerifiedFilterBtn = ({ value, label }: { value: VerifiedFilter; label: string }) => (
+  const VerifiedFilterBtn = ({
+    value,
+    label,
+  }: {
+    value: VerifiedFilter;
+    label: string;
+  }) => (
     <button
       onClick={() => setVerifiedFilter(value)}
       className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
         verifiedFilter === value
-          ? value === 'verified' ? 'bg-green-600 text-white border-green-600'
-          : value === 'unverified' ? 'bg-red-500 text-white border-red-500'
-          : 'bg-blue-600 text-white border-blue-600'
-          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+          ? value === "verified"
+            ? "bg-green-600 text-white border-green-600"
+            : value === "unverified"
+              ? "bg-red-500 text-white border-red-500"
+              : "bg-blue-600 text-white border-blue-600"
+          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
       }`}
     >
       {label}
-      {value !== 'all' && (
+      {value !== "all" && (
         <span className="ml-1.5 text-xs opacity-80">
-          ({value === 'verified' ? collections.filter(c => c.verified).length : collections.filter(c => !c.verified).length})
+          (
+          {value === "verified"
+            ? collections.filter((c) => c.verified).length
+            : collections.filter((c) => !c.verified).length}
+          )
         </span>
       )}
     </button>
-  )
+  );
 
   return (
     <div className="flex h-full bg-gray-50 w-full max-w-full overflow-hidden">
       {/* ── Sidebar ── */}
       <motion.div
-        initial={{ width: '20rem' }}
-        animate={{ width: isFilterOpen ? '20rem' : '2.5rem' }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        initial={{ width: "20rem" }}
+        animate={{ width: isFilterOpen ? "20rem" : "2.5rem" }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
         className="border-r border-gray-200 overflow-y-auto flex-shrink-0"
         style={{ width: "clamp(256px, 20vw, 320px)" }}
       >
         {isFilterOpen ? (
           <ScrollArea className="p-4 max-h-[30vh]">
             <div className="mb-4">
-              <IoIosOpen onClick={() => setIsFilterOpen(false)}
+              <IoIosOpen
+                onClick={() => setIsFilterOpen(false)}
                 className="mt-4 absolute cursor-pointer top-0 hover:bg-gray-200 transition-colors duration-100 ease-in w-8 h-8 left-2 flex justify-center items-center"
-                size={28} />
+                size={28}
+              />
               <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
                 <FaFilter className="text-blue-600" />
                 Filter by Location
               </h3>
-              <div className="text-xs text-gray-500 mb-4">Select states, depots, or specific employees to filter collections</div>
+              <div className="text-xs text-gray-500 mb-4">
+                Select states, depots, or specific employees to filter
+                collections
+              </div>
 
               <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Date Range</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">
+                  Date Range
+                </h4>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">From</label>
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm" />
+                    <label className="block text-xs text-gray-500 mb-1">
+                      From
+                    </label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">To</label>
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm" />
+                    <label className="block text-xs text-gray-500 mb-1">
+                      To
+                    </label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                    />
                   </div>
                 </div>
               </div>
 
               <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={isAllLocationsSelected(locationTree)}
-                    ref={(el) => { if (el) el.indeterminate = !isAllLocationsSelected(locationTree) && isAnyLocationSelected(locationTree) }}
+                  <input
+                    type="checkbox"
+                    checked={isAllLocationsSelected(locationTree)}
+                    ref={(el) => {
+                      if (el)
+                        el.indeterminate =
+                          !isAllLocationsSelected(locationTree) &&
+                          isAnyLocationSelected(locationTree);
+                    }}
                     onChange={handleSelectAllLocations}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
-                  <span className="text-sm font-medium text-gray-700">Select All Locations</span>
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All Locations
+                  </span>
                 </div>
               </div>
 
               {error && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="text-red-800 text-sm font-medium">Connection Error</div>
+                  <div className="text-red-800 text-sm font-medium">
+                    Connection Error
+                  </div>
                   <div className="text-red-600 text-xs mt-1">{error}</div>
-                  <div className="text-red-600 text-xs mt-1">Using demo data instead</div>
+                  <div className="text-red-600 text-xs mt-1">
+                    Using demo data instead
+                  </div>
                 </div>
               )}
             </div>
@@ -680,11 +963,18 @@ function Collections() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : (
-              <div className="space-y-1">{locationTree.map((state, index) => renderLocationNode(state, [index]))}</div>
+              <div className="space-y-1">
+                {locationTree.map((state, index) =>
+                  renderLocationNode(state, [index]),
+                )}
+              </div>
             )}
           </ScrollArea>
         ) : (
-          <div onClick={() => setIsFilterOpen(true)} className="w-10 p-0 hover:bg-gray-200 transition-colors cursor-pointer duration-100 flex justify-center items-center ease-in absolute left-3 h-10">
+          <div
+            onClick={() => setIsFilterOpen(true)}
+            className="w-10 p-0 hover:bg-gray-200 transition-colors cursor-pointer duration-100 flex justify-center items-center ease-in absolute left-3 h-10"
+          >
             <IoIosOpen size={28} />
           </div>
         )}
@@ -696,9 +986,14 @@ function Collections() {
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-2xl font-bold text-gray-800">Collections</h2>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Payment Method:</span>
-              <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as any)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <span className="text-sm font-medium text-gray-700">
+                Payment Method:
+              </span>
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value as any)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
                 <option value="all">All Methods</option>
                 <option value="cash">Cash</option>
                 <option value="cheque">Cheque</option>
@@ -717,25 +1012,46 @@ function Collections() {
           <div className="relative justify-between items-center flex flex-row">
             <div className="w-1/2 h-10 flex relative">
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Search collections by party name, ID, or employee..."
-                value={globalFilter ?? ''} onChange={(e) => setGlobalFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input
+                type="text"
+                placeholder="Search collections by party name, ID, or employee..."
+                value={globalFilter ?? ""}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
             {collections.length !== 0 && (
               <div className="flex gap-3 justify-center items-center">
                 <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
                   <CSVLink
                     data={[
-                      ["Employee", "Party Name", "Date", "Method", "Amount", "Verified", "Ledger"],
+                      [
+                        "Employee",
+                        "Party Name",
+                        "Date",
+                        "Method",
+                        "Amount",
+                        "Verified",
+                        "Ledger",
+                      ],
                       ...collections.map((item) => {
-                        const ledger = ledgers.find(l => l.ledcd === (selectedLedgers[item.collection_id] ?? item.ledgerId))
+                        const ledger = ledgers.find(
+                          (l) => l.ledcd === item.ledgerId,
+                        );
                         return [
-                          item.empName, item.partyName,
-                          new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" }),
-                          item.paymentMethod, item.amount, item.verified ? "Yes" : "No",
-                          ledger ? `${ledger.lednm} (${ledger.untshnm})` : ""
-                        ]
-                      })
+                          item.empName,
+                          item.partyName,
+                          new Date(item.createdAt).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "2-digit",
+                          }),
+                          item.paymentMethod,
+                          item.amount,
+                          item.verified ? "Yes" : "No",
+                          ledger ? `${ledger.lednm} (${ledger.untshnm})` : "",
+                        ];
+                      }),
                     ]}
                     filename="all-collections-csv"
                   >
@@ -746,16 +1062,36 @@ function Collections() {
                   <button className="bg-blue-600 w-40 py-3 rounded-lg text-white cursor-pointer">
                     <CSVLink
                       data={[
-                        ["Employee", "Party Name", "Date", "Method", "Amount", "Verified", "Ledger"],
+                        [
+                          "Employee",
+                          "Party Name",
+                          "Date",
+                          "Method",
+                          "Amount",
+                          "Verified",
+                          "Ledger",
+                        ],
                         ...selectedCollections.map((item) => {
-                          const ledger = ledgers.find(l => l.ledcd === (selectedLedgers[item.collection_id] ?? item.ledgerId))
+                          const ledger = ledgers.find(
+                            (l) => l.ledcd === item.ledgerId,
+                          );
                           return [
-                            item.empName, item.partyName,
-                            new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" }),
-                            item.paymentMethod, item.amount, item.verified ? "Yes" : "No",
-                            ledger ? `${ledger.lednm} (${ledger.untshnm})` : ""
-                          ]
-                        })
+                            item.empName,
+                            item.partyName,
+                            new Date(item.createdAt).toLocaleDateString(
+                              "en-IN",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "2-digit",
+                              },
+                            ),
+                            item.paymentMethod,
+                            item.amount,
+                            item.verified ? "Yes" : "No",
+                            ledger ? `${ledger.lednm} (${ledger.untshnm})` : "",
+                          ];
+                        }),
                       ]}
                       filename="selected-collections-csv"
                     >
@@ -768,44 +1104,28 @@ function Collections() {
           </div>
         </div>
 
-        {/* ── Global Ledger Selector ── */}
-        <div className="mb-3 flex items-center gap-3">
-          <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Apply Ledger to All:</span>
-          <select
-            value={globalLedger}
-            onChange={(e) => setGlobalLedger(e.target.value)}
-            className={`text-sm border rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[220px] ${
-              globalLedger ? 'border-green-400 text-gray-800' : 'border-gray-300 text-gray-400'
-            }`}
-          >
-            <option value="">— Select Global Ledger —</option>
-            {ledgers.map(ledger => (
-              <option key={ledger.ledcd} value={ledger.ledcd}>
-                {ledger.lednm} ({ledger.untshnm})
-              </option>
-            ))}
-          </select>
-          {globalLedger && (
-            <button
-              onClick={() => setGlobalLedger("")}
-              className="text-xs text-red-500 hover:text-red-700 underline"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
         <div className="mb-4 flex items-center gap-4 flex-wrap">
           <span className="text-sm font-medium text-gray-700">Group by:</span>
-          {['empName', 'paymentMethod'].map(col => (
-            <button key={col}
-              onClick={() => setGrouping(prev => prev.includes(col) ? prev.filter(p => p !== col) : [...prev, col])}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${grouping.includes(col) ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
-              {col === 'empName' ? 'Employee' : 'Payment Method'}
+          {["empName", "paymentMethod"].map((col) => (
+            <button
+              key={col}
+              onClick={() =>
+                setGrouping((prev) =>
+                  prev.includes(col)
+                    ? prev.filter((p) => p !== col)
+                    : [...prev, col],
+                )
+              }
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${grouping.includes(col) ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+            >
+              {col === "empName" ? "Employee" : "Payment Method"}
             </button>
           ))}
           {grouping.length > 0 && (
-            <button onClick={() => setGrouping([])} className="px-3 py-1 rounded-md text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200">
+            <button
+              onClick={() => setGrouping([])}
+              className="px-3 py-1 rounded-md text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200"
+            >
               Clear Groups
             </button>
           )}
@@ -818,44 +1138,86 @@ function Collections() {
             </div>
           ) : table.getFilteredRowModel().rows.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-gray-500 text-lg mb-2">No collections found</div>
-              <div className="text-gray-400 text-sm">Select locations from the filter panel to view collections</div>
+              <div className="text-gray-500 text-lg mb-2">
+                No collections found
+              </div>
+              <div className="text-gray-400 text-sm">
+                Select locations from the filter panel to view collections
+              </div>
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-lg shadow border border-gray-200 overflow-auto flex-1 min-h-0" style={{ maxHeight: '55vh' }}>
-                <table className="w-full divide-y divide-gray-200" style={{ minWidth: "1200px" }}>
+              <div
+                className="bg-white rounded-lg shadow border border-gray-200 overflow-auto flex-1 min-h-0"
+                style={{ maxHeight: "55vh" }}
+              >
+                <table
+                  className="w-full divide-y divide-gray-200"
+                  style={{ minWidth: "1200px" }}
+                >
                   <thead className="bg-gray-50 sticky top-0 z-10">
-                    {table.getHeaderGroups().map(headerGroup => (
+                    {table.getHeaderGroups().map((headerGroup) => (
                       <tr key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <th key={header.id}
+                        {headerGroup.headers.map((header) => (
+                          <th
+                            key={header.id}
                             className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            style={{ width: header.getSize() }}>
-                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                            style={{ width: header.getSize() }}
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
                           </th>
                         ))}
                       </tr>
                     ))}
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {table.getRowModel().rows.map(row => (
+                    {table.getRowModel().rows.map((row) => (
                       <React.Fragment key={row.id}>
                         <tr className="hover:bg-gray-50">
-                          {row.getVisibleCells().map(cell => (
-                            <td key={cell.id} className="px-3 py-3 whitespace-nowrap text-sm"
-                              style={{ paddingLeft: cell.getIsGrouped() ? `${row.depth * 2 + 1}rem` : undefined }}>
+                          {row.getVisibleCells().map((cell) => (
+                            <td
+                              key={cell.id}
+                              className="px-3 py-3 whitespace-nowrap text-sm"
+                              style={{
+                                paddingLeft: cell.getIsGrouped()
+                                  ? `${row.depth * 2 + 1}rem`
+                                  : undefined,
+                              }}
+                            >
                               {cell.getIsGrouped() ? (
-                                <button onClick={row.getToggleExpandedHandler()} className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800">
-                                  {row.getIsExpanded() ? <FaChevronDown className="w-4 h-4" /> : <FaChevronRight className="w-4 h-4" />}
-                                  {flexRender(cell.column.columnDef.cell, cell.getContext())} ({row.subRows.length})
+                                <button
+                                  onClick={row.getToggleExpandedHandler()}
+                                  className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
+                                >
+                                  {row.getIsExpanded() ? (
+                                    <FaChevronDown className="w-4 h-4" />
+                                  ) : (
+                                    <FaChevronRight className="w-4 h-4" />
+                                  )}
+                                  {flexRender(
+                                    cell.column.columnDef.cell,
+                                    cell.getContext(),
+                                  )}{" "}
+                                  ({row.subRows.length})
                                 </button>
                               ) : cell.getIsAggregated() ? (
                                 <span className="font-medium text-slate-600">
-                                  {flexRender(cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell, cell.getContext())}
+                                  {flexRender(
+                                    cell.column.columnDef.aggregatedCell ??
+                                      cell.column.columnDef.cell,
+                                    cell.getContext(),
+                                  )}
                                 </span>
                               ) : cell.getIsPlaceholder() ? null : (
-                                flexRender(cell.column.columnDef.cell, cell.getContext())
+                                flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext(),
+                                )
                               )}
                             </td>
                           ))}
@@ -863,55 +1225,141 @@ function Collections() {
 
                         {row.getIsExpanded() && !row.getIsGrouped() && (
                           <tr>
-                            <td colSpan={columns.length} className="px-6 py-4 bg-gray-50">
+                            <td
+                              colSpan={columns.length}
+                              className="px-6 py-4 bg-gray-50"
+                            >
                               <div className="space-y-3">
-                                <h4 className="text-sm font-medium text-gray-900 mb-2">Collection Details:</h4>
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">
+                                  Collection Details:
+                                </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div>
-                                    <div className="text-xs font-medium text-gray-500 mb-1">Collection ID</div>
-                                    <div className="text-sm text-gray-900">{row.original.collection_id}</div>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-medium text-gray-500 mb-1">Payment Method</div>
-                                    <div className="text-sm text-gray-900 flex items-center gap-2">
-                                      {getPaymentMethodIcon(row.original.paymentMethod)}
-                                      {getPaymentMethodLabel(row.original.paymentMethod)}
+                                    <div className="text-xs font-medium text-gray-500 mb-1">
+                                      Collection ID
+                                    </div>
+                                    <div className="text-sm text-gray-900">
+                                      {row.original.collection_id}
                                     </div>
                                   </div>
                                   <div>
-                                    <div className="text-xs font-medium text-gray-500 mb-1">Verification Status</div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">
+                                      Payment Method
+                                    </div>
+                                    <div className="text-sm text-gray-900 flex items-center gap-2">
+                                      {getPaymentMethodIcon(
+                                        row.original.paymentMethod,
+                                      )}
+                                      {getPaymentMethodLabel(
+                                        row.original.paymentMethod,
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">
+                                      Verification Status
+                                    </div>
                                     <div className="text-sm text-gray-900">
                                       {row.original.verified ? (
                                         <span className="text-green-700">
-                                          ✓ Verified by <strong>{row.original.verifiedBy}</strong>
-                                          {row.original.verifiedAt && <> on {new Date(row.original.verifiedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</>}
+                                          ✓ Verified by{" "}
+                                          <strong>
+                                            {row.original.verifiedBy}
+                                          </strong>
+                                          {row.original.verifiedAt && (
+                                            <>
+                                              {" "}
+                                              on{" "}
+                                              {new Date(
+                                                row.original.verifiedAt,
+                                              ).toLocaleDateString("en-IN", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                year: "numeric",
+                                              })}
+                                            </>
+                                          )}
                                         </span>
-                                      ) : <span className="text-red-500">✗ Not verified</span>}
+                                      ) : (
+                                        <span className="text-red-500">
+                                          ✗ Not verified
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   <div>
-                                    <div className="text-xs font-medium text-gray-500 mb-1">Ledger</div>
+                                    <div className="text-xs font-medium text-gray-500 mb-1">
+                                      Ledger
+                                    </div>
                                     <div className="text-sm text-gray-900">
                                       {(() => {
-                                        const assignedCode = getEffectiveLedger(row.original.collection_id) || row.original.ledgerId
-                                        const ledger = ledgers.find(l => l.ledcd === assignedCode)
-                                        return ledger
-                                          ? <span>{ledger.lednm} <span className="text-xs text-gray-400">({ledger.untshnm})</span></span>
-                                          : <span className="text-gray-400 italic">No ledger assigned</span>
+                                        const ledger = ledgers.find(
+                                          (l) =>
+                                            l.ledcd === row.original.ledgerId,
+                                        );
+                                        return ledger ? (
+                                          <span>
+                                            {ledger.lednm}{" "}
+                                            <span className="text-xs text-gray-400">
+                                              ({ledger.untshnm})
+                                            </span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400 italic">
+                                            {row.original.verified
+                                              ? "No ledger assigned"
+                                              : "Will be auto-assigned on verify"}
+                                          </span>
+                                        );
                                       })()}
                                     </div>
                                   </div>
                                   {row.original.paymentMethod === "cheque" && (
                                     <>
-                                      <div><div className="text-xs font-medium text-gray-500 mb-1">Cheque Number</div><div className="text-sm text-gray-900">{row.original.chequeNumber || "N/A"}</div></div>
-                                      <div><div className="text-xs font-medium text-gray-500 mb-1">Cheque Date</div><div className="text-sm text-gray-900">{row.original.chequeDate || "N/A"}</div></div>
-                                      <div><div className="text-xs font-medium text-gray-500 mb-1">Bank Name</div><div className="text-sm text-gray-900">{row.original.bankName || "N/A"}</div></div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">
+                                          Cheque Number
+                                        </div>
+                                        <div className="text-sm text-gray-900">
+                                          {row.original.chequeNumber || "N/A"}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">
+                                          Cheque Date
+                                        </div>
+                                        <div className="text-sm text-gray-900">
+                                          {row.original.chequeDate || "N/A"}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">
+                                          Bank Name
+                                        </div>
+                                        <div className="text-sm text-gray-900">
+                                          {row.original.bankName || "N/A"}
+                                        </div>
+                                      </div>
                                     </>
                                   )}
                                   {row.original.paymentMethod === "online" && (
                                     <>
-                                      <div><div className="text-xs font-medium text-gray-500 mb-1">UPI ID</div><div className="text-sm text-gray-900">{row.original.upiId || "N/A"}</div></div>
-                                      <div><div className="text-xs font-medium text-gray-500 mb-1">Transaction ID</div><div className="text-sm text-gray-900">{row.original.transactionId || "N/A"}</div></div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">
+                                          UPI ID
+                                        </div>
+                                        <div className="text-sm text-gray-900">
+                                          {row.original.upiId || "N/A"}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-500 mb-1">
+                                          Transaction ID
+                                        </div>
+                                        <div className="text-sm text-gray-900">
+                                          {row.original.transactionId || "N/A"}
+                                        </div>
+                                      </div>
                                     </>
                                   )}
                                 </div>
@@ -927,8 +1375,13 @@ function Collections() {
 
               <div className="mt-4 flex items-center justify-between bg-white border border-gray-200 rounded-lg p-4 flex-shrink-0">
                 <div className="text-sm text-gray-600">
-                  Showing {table.getRowModel().rows.length} of {table.getFilteredRowModel().rows.length} collections
-                  {verifiedFilter !== 'all' && <span className="ml-2 text-gray-400">(filtered: {verifiedFilter})</span>}
+                  Showing {table.getRowModel().rows.length} of{" "}
+                  {table.getFilteredRowModel().rows.length} collections
+                  {verifiedFilter !== "all" && (
+                    <span className="ml-2 text-gray-400">
+                      (filtered: {verifiedFilter})
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -937,16 +1390,17 @@ function Collections() {
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col gap-1">
                       <div className="text-sm text-gray-600">
-                        {selectedCollections.length} collection{selectedCollections.length !== 1 ? 's' : ''} selected
+                        {selectedCollections.length} collection
+                        {selectedCollections.length !== 1 ? "s" : ""} selected
                       </div>
-                      {selectedMissingLedger > 0 && (
-                        <div className="text-xs text-amber-600 flex items-center gap-1">
-                          ⚠️ {selectedMissingLedger} selected collection{selectedMissingLedger !== 1 ? 's have' : ' has'} no ledger assigned — ledgerId will be sent as null
-                        </div>
-                      )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <p className="text-sm">Total Amount: <span className="font-semibold">₹{totalSelectedAmount.toLocaleString("en-IN")}</span></p>
+                      <p className="text-sm">
+                        Total Amount:{" "}
+                        <span className="font-semibold">
+                          ₹{totalSelectedAmount.toLocaleString("en-IN")}
+                        </span>
+                      </p>
                       <button
                         onClick={handleVerifyCollections}
                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
@@ -963,7 +1417,7 @@ function Collections() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default Collections
+export default Collections;
