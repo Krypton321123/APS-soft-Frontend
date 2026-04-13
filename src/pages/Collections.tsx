@@ -545,7 +545,7 @@ function Collections() {
         accessorKey: 'verified',
         header: 'Verified',
         cell: ({ row }) => {
-          const { verified, verifiedBy, verifiedAt } = row.original
+          const { verified, verifiedBy } = row.original
           return verified ? (
             <div className="flex flex-col gap-0.5">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 w-fit">
