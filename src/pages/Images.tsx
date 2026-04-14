@@ -10,7 +10,7 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table';
-import { Flag, ChevronDown, ChevronUp, Download, RotateCcw, Search, X, Layers, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, RotateCcw, Search, X, SlidersHorizontal } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';

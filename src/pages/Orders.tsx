@@ -14,8 +14,8 @@ import {
 } from '@tanstack/react-table'
 import type { ColumnDef } from "@tanstack/react-table"
 import {
-  ChevronUp, ChevronDown, ChevronRight, Search, Filter,
-  Check, X, Download, Layers, SlidersHorizontal,
+  ChevronUp, ChevronDown, ChevronRight, Search,
+  Check, X, Download, Layers,
   PanelLeftClose, PanelLeftOpen, Users, MapPin
 } from 'lucide-react'
 import { toast } from "sonner"
@@ -163,7 +163,7 @@ const TreeNode = ({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 function Orders() {
-  const [users, setUsers] = useState<User[]>([])
+  const [_, setUsers] = useState<User[]>([])
   const [expanded, setExpanded] = useState({})
   const [orders, setOrders] = useState<Order[]>([])
   const [adminType] = useState(localStorage.getItem("userType"))
@@ -887,7 +887,7 @@ function Orders() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {row.original.orderItems.map((item, idx) => (
+                                      {row.original.orderItems.map((item, _) => (
                                         <tr key={item.id} style={{ borderBottom: '0.5px solid #f4f5fa' }}>
                                           <td className="px-4 py-2.5" style={{ fontSize: 12, fontWeight: 500, color: '#1a1a2e', fontFamily: "'DM Sans', sans-serif" }}>{item.itemCode}</td>
                                           <td className="px-4 py-2.5" style={{ fontSize: 12, color: '#4a4c6a', fontFamily: "'DM Sans', sans-serif" }}>{item.itemName}</td>

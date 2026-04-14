@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { MapPin, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { MapPin, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 

@@ -18,7 +18,6 @@ import {
   ChevronRight,
   Search,
   Check,
-  X,
   Download,
   Layers,
   PanelLeftClose,

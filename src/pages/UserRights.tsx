@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   Users, Plus, Save, X, Shield, Search, Check,
-  Loader2, Trash2, PanelLeftClose, PanelLeftOpen, ChevronRight,
+  Loader2, Trash2, PanelLeftClose, PanelLeftOpen,
   User, Lock, ToggleLeft, ToggleRight
 } from 'lucide-react'
 import axios from 'axios'
@@ -220,7 +220,6 @@ export default function UserManagement() {
 
   const inputCls = "h-9 rounded-xl border px-3 text-sm focus:outline-none focus:ring-2 transition-all"
   const inputStyle = { borderColor: '#e8e9ef', color: '#1a1a2e', fontFamily: "'DM Sans', sans-serif", fontSize: 12 }
-  const inputFocus = { '--tw-ring-color': '#c7cdf7' } as any
 
   return (
     <div className="flex h-full overflow-hidden" style={{ fontFamily: "'DM Sans', sans-serif", background: '#f2f3f7' }}>
