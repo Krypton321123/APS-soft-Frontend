@@ -937,6 +937,9 @@ function Collections() {
     .getSelectedRowModel()
     .rows.map((r) => r.original);
 
+  // Disable verify if ANY selected collection is already verified
+  const hasVerifiedInSelection = selectedCollections.some((c) => c.verified);
+
   const csvData = (data: Collection[]) => [
     [
       "Employee",
@@ -1814,18 +1817,33 @@ function Collections() {
                           ₹{totalSelectedAmount.toLocaleString("en-IN")}
                         </strong>
                       </span>
+                      {/* Warning shown when verified collections are in the selection */}
+                      {hasVerifiedInSelection && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "#f59e0b",
+                            fontFamily: "'DM Sans', sans-serif",
+                          }}
+                        >
+                          ⚠ Selection includes already-verified collections
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={handleVerifyCollections}
-                      className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all hover:opacity-85"
+                      disabled={hasVerifiedInSelection}
+                      className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all"
                       style={{
-                        background: "#22c55e",
-                        color: "#fff",
+                        background: hasVerifiedInSelection ? "#e5e7eb" : "#22c55e",
+                        color: hasVerifiedInSelection ? "#9ca3af" : "#fff",
                         fontFamily: "'DM Sans', sans-serif",
+                        cursor: hasVerifiedInSelection ? "not-allowed" : "pointer",
+                        opacity: 1,
                       }}
                     >
                       <Check size={13} />
-                      Verify Collections
+                      {hasVerifiedInSelection ? "Can't Verify" : "Verify Now"}
                     </button>
                   </motion.div>
                 )}
