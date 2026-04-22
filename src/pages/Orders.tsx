@@ -63,6 +63,9 @@ interface Order {
   orderItems: OrderItem[]
   outstanding: number
   collection: { amount: number; paymentMethod: string }
+  // Added by backend
+  derivedStatus: string   // "ACCEPT" | "PARK" | "REJECT" | "UNVERIFIED"
+  sicd: string            // Voucher number, populated after ACCEPT
 }
 
 interface LocationNode {
@@ -81,6 +84,25 @@ interface ApiResponse<T> {
   message: string
   data: T
   success: boolean
+}
+
+// ── Status badge ───────────────────────────────────────────────────────────────
+const StatusBadge = ({ status }: { status: string }) => {
+  const config: Record<string, { label: string; bg: string; color: string; border: string }> = {
+    ACCEPT:     { label: 'Accepted',   bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
+    PARK:       { label: 'Parked',     bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+    REJECT:     { label: 'Rejected',   bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+    UNVERIFIED: { label: 'Unverified', bg: '#f4f5fa', color: '#9496b0', border: '#e8e9ef' },
+  }
+  const c = config[status] ?? config['UNVERIFIED']
+  return (
+    <span
+      className="text-xs px-2 py-0.5 rounded-md border font-medium"
+      style={{ background: c.bg, color: c.color, borderColor: c.border, fontFamily: "'DM Sans', sans-serif" }}
+    >
+      {c.label}
+    </span>
+  )
 }
 
 // ── Location Tree Node ─────────────────────────────────────────────────────────
@@ -339,7 +361,14 @@ function Orders() {
       else { setOrders([]); throw new Error(result.message || 'Failed to fetch orders') }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to fetch orders')
-      setOrders([{ order_id: '1', partyId: 'P001', partyName: 'ABC Company', empId: 'emp1', empName: 'emp1', totalAmount: 15000, discountAmount: 500, paymentMode: 'cash', status: 'completed', createdAt: '2025-05-30T10:30:00Z', outstanding: 200, consumerRate: 100, bulkRate: 80, collection: { amount: 200, paymentMethod: 'Cash' }, orderItems: [{ id: '1', itemCode: 'IT001', itemName: 'Product A', quantity: 10, rate: 1500, amount: 15000, packType: 'Consumer Pack' }] }])
+      setOrders([{
+        order_id: '1', partyId: 'P001', partyName: 'ABC Company', empId: 'emp1', empName: 'emp1',
+        totalAmount: 15000, discountAmount: 500, paymentMode: 'cash', status: 'completed',
+        createdAt: '2025-05-30T10:30:00Z', outstanding: 200, consumerRate: 100, bulkRate: 80,
+        collection: { amount: 200, paymentMethod: 'Cash' },
+        derivedStatus: 'UNVERIFIED', sicd: '',
+        orderItems: [{ id: '1', itemCode: 'IT001', itemName: 'Product A', quantity: 10, rate: 1500, amount: 15000, packType: 'Consumer Pack' }]
+      }])
     } finally { setOrdersLoading(false) }
   }
 
@@ -381,12 +410,14 @@ function Orders() {
     if (userType === 'ADMIN' || userType === 'HEAD-OFFICE') status = 'ACCEPT'
     else if (userType === 'DEPOT-INCHARGE') status = 'PARK'
     else return toast.info('Not a valid User Type')
+
     const formatOrders = table.getSelectedRowModel().rows.map(row => ({
       id: row.original.order_id,
       consumerRate: editedValues[row.original.order_id]?.consumerRate ?? row.original.consumerRate,
       bulkRate: editedValues[row.original.order_id]?.bulkRate ?? row.original.bulkRate,
       remarks: editedValues[row.original.order_id]?.remarks ?? '',
     }))
+
     try {
       const response = await axios.post(`${API_BASE_URL}/orders/accept`, { orders: formatOrders, adminName: localStorage.getItem('username'), status })
       if (response.status === 200) {
@@ -421,9 +452,20 @@ function Orders() {
       header: ({ table }) => (
         <input type="checkbox" checked={table.getIsAllRowsSelected()} onChange={table.getToggleAllRowsSelectedHandler()} className="w-3.5 h-3.5 rounded cursor-pointer accent-[#5b6af0]" />
       ),
-      cell: ({ row }) => (
-        <input type="checkbox" checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} className="w-3.5 h-3.5 rounded cursor-pointer accent-[#5b6af0]" />
-      ),
+      cell: ({ row }) => {
+        // Disable checkbox if order is already ACCEPT — can't re-accept
+        const isAccepted = row.original.derivedStatus === 'ACCEPT'
+        return (
+          <input
+            type="checkbox"
+            checked={row.getIsSelected()}
+            disabled={isAccepted}
+            onChange={row.getToggleSelectedHandler()}
+            className="w-3.5 h-3.5 rounded cursor-pointer accent-[#5b6af0] disabled:opacity-30 disabled:cursor-not-allowed"
+            title={isAccepted ? 'Order already accepted' : undefined}
+          />
+        )
+      },
       size: 36,
     },
     {
@@ -451,6 +493,30 @@ function Orders() {
         </div>
       ),
       minSize: 200,
+    },
+    // ── Status column ──────────────────────────────────────────────────────────
+    {
+      id: 'derivedStatus',
+      accessorKey: 'derivedStatus',
+      header: 'Status',
+      cell: ({ row }) => <StatusBadge status={row.original.derivedStatus ?? 'UNVERIFIED'} />,
+    },
+    // ── Voucher No column (sicd, only shows value after ACCEPT) ───────────────
+    {
+      id: 'voucherNo',
+      header: 'Voucher No',
+      cell: ({ row }) => {
+        const isAccepted = row.original.derivedStatus === 'ACCEPT'
+        const sicd = row.original.sicd
+        if (!isAccepted) {
+          return <span style={{ fontSize: 12, color: '#c4c6d2', fontFamily: "'DM Sans', sans-serif" }}>—</span>
+        }
+        return (
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#1a1a2e', fontFamily: "'DM Sans', sans-serif" }}>
+            {sicd && sicd.trim() !== '' ? sicd : 'N/A'}
+          </span>
+        )
+      },
     },
     {
       accessorKey: 'outstanding',
@@ -591,7 +657,7 @@ function Orders() {
     data: orders ?? [],
     columns,
     state: { globalFilter, rowSelection, grouping, expanded },
-    enableRowSelection: true,
+    enableRowSelection: (row) => row.original.derivedStatus !== 'ACCEPT',
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
@@ -618,10 +684,18 @@ function Orders() {
   const selectedOrders = table.getSelectedRowModel().rows.map(r => r.original)
 
   const csvData = (data: Order[]) => [
-    ['Employee', 'Party Name', 'Date', 'Consumer Rate', 'Bulk Rate', 'Total Quantity', 'Discount', 'Amount After Discount', 'Total Amount', 'Payment'],
+    ['Employee', 'Party Name', 'Date', 'Status', 'Voucher No', 'Consumer Rate', 'Bulk Rate', 'Total Quantity', 'Discount', 'Amount After Discount', 'Total Amount', 'Payment'],
     ...data.map(item => {
       const { totalQuantity } = calculateQuantities(item.orderItems)
-      return [item.empName, item.partyName, new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' }), item.consumerRate, item.bulkRate, totalQuantity, item.discountAmount, item.consumerRate! - item.discountAmount, item.totalAmount, item.paymentMode]
+      return [
+        item.empName, item.partyName,
+        new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' }),
+        item.derivedStatus ?? 'UNVERIFIED',
+        item.derivedStatus === 'ACCEPT' ? (item.sicd || 'N/A') : '—',
+        item.consumerRate, item.bulkRate, totalQuantity,
+        item.discountAmount, item.consumerRate! - item.discountAmount,
+        item.totalAmount, item.paymentMode,
+      ]
     }),
   ]
 
@@ -785,7 +859,7 @@ function Orders() {
             {[
               { key: 'empName', label: 'Employee' },
               { key: 'paymentMode', label: 'Payment' },
-              { key: 'status', label: 'Status' },
+              { key: 'derivedStatus', label: 'Status' },
             ].map(({ key, label }) => (
               <button
                 key={key}
@@ -830,7 +904,7 @@ function Orders() {
               {/* Table card */}
               <div className="flex-1 min-h-0 rounded-xl overflow-hidden" style={{ border: '0.5px solid #e8e9ef', background: '#fff' }}>
                 <div className="h-full overflow-auto">
-                  <table className="w-full" style={{ minWidth: 1000 }}>
+                  <table className="w-full" style={{ minWidth: 1100 }}>
                     <thead className="sticky top-0 z-10" style={{ background: '#fafafa', borderBottom: '0.5px solid #f0f1f6' }}>
                       {table.getHeaderGroups().map(hg => (
                         <tr key={hg.id}>
@@ -887,7 +961,7 @@ function Orders() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {row.original.orderItems.map((item, _) => (
+                                      {row.original.orderItems.map((item) => (
                                         <tr key={item.id} style={{ borderBottom: '0.5px solid #f4f5fa' }}>
                                           <td className="px-4 py-2.5" style={{ fontSize: 12, fontWeight: 500, color: '#1a1a2e', fontFamily: "'DM Sans', sans-serif" }}>{item.itemCode}</td>
                                           <td className="px-4 py-2.5" style={{ fontSize: 12, color: '#4a4c6a', fontFamily: "'DM Sans', sans-serif" }}>{item.itemName}</td>

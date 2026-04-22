@@ -247,7 +247,7 @@ function Sidebar({ children }: { children?: React.ReactNode }) {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -4 }}
                       transition={{ duration: 0.13, delay: idx * 0.012 }}
-                      className="whitespace-nowrap overflow-hidden"
+                      className="whitespace-nowrap font-bold overflow-hidden"
                       style={{
                         fontSize: 12.5,
                         fontWeight: item.isActive ? 500 : 400,
