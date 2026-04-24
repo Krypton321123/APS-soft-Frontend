@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import React from "react";
 import { CSVLink } from "react-csv";
 import { motion, AnimatePresence } from "motion/react";
@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
+const amountChangeEmitter = new EventTarget();
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface User {
@@ -89,6 +90,55 @@ interface ApiResponse<T> {
   data: T;
   success: boolean;
 }
+
+interface EditableAmountCellProps {
+  collectionId: string;
+  initialAmount: number;
+  editedAmountsRef: React.MutableRefObject<Record<string, number>>;
+  onChange: (id: string, value: number) => void;
+}
+
+const EditableAmountCell = ({
+  collectionId,
+  initialAmount,
+  editedAmountsRef,
+  onChange,
+}: EditableAmountCellProps) => {
+  const getInitial = () => {
+    const entry = editedAmountsRef.current[collectionId];
+    return entry !== undefined ? entry : initialAmount;
+  };
+
+  const [localValue, setLocalValue] = useState(getInitial);
+
+  const prevId = useRef(collectionId);
+  useEffect(() => {
+    if (prevId.current !== collectionId) {
+      setLocalValue(getInitial());
+      prevId.current = collectionId;
+    }
+  }, [collectionId]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setLocalValue(val);
+    onChange(collectionId, val);
+  };
+
+  return (
+    <input
+      type="number"
+      value={localValue}
+      onChange={handleChange}
+      className="w-24 h-7 text-right rounded-lg border px-2 text-xs focus:outline-none focus:ring-1"
+      style={{
+        borderColor: "#e8e9ef",
+        fontFamily: "'DM Sans', sans-serif",
+        color: "#1a1a2e",
+      }}
+    />
+  );
+};
 
 type VerifiedFilter = "all" | "verified" | "unverified";
 
@@ -208,12 +258,13 @@ function Collections() {
   >("all");
   const [verifiedFilter, setVerifiedFilter] = useState<VerifiedFilter>("all");
   const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>(
-    {}
+    {},
   );
   const [totalSelectedAmount, setTotalSelectedAmount] = useState<number>(0);
   const today = new Date().toISOString().split("T")[0];
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
+  const editedAmountsRef = useRef<Record<string, number>>({});
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [grouping, setGrouping] = useState<string[]>([]);
 
@@ -246,7 +297,7 @@ function Collections() {
       }
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "Failed to fetch users"
+        error instanceof Error ? error.message : "Failed to fetch users",
       );
       const mockUsers: User[] = [
         {
@@ -288,7 +339,7 @@ function Collections() {
     let allowedLocationsArray: string[] = [];
     try {
       allowedLocationsArray = JSON.parse(
-        localStorage.getItem("allowedLocations") || "[]"
+        localStorage.getItem("allowedLocations") || "[]",
       );
       if (!Array.isArray(allowedLocationsArray)) allowedLocationsArray = [];
     } catch {
@@ -299,8 +350,7 @@ function Collections() {
       if (userType === "ADMIN") return true;
       if (allowedLocationsArray.length === 0) return false;
       return allowedLocationsArray.some(
-        (loc) =>
-          loc.toLowerCase() === locationName.toLowerCase().slice(0, 3)
+        (loc) => loc.toLowerCase() === locationName.toLowerCase().slice(0, 3),
       );
     };
 
@@ -356,7 +406,7 @@ function Collections() {
       .map((s) => ({
         ...s,
         children: s.children?.filter(
-          (d) => d.children && d.children.length > 0
+          (d) => d.children && d.children.length > 0,
         ),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -382,7 +432,7 @@ function Collections() {
       const toggleNode = (
         nodes: LocationNode[],
         currentPath: number[],
-        depth: number
+        depth: number,
       ) => {
         if (depth === currentPath.length) return;
         const node = nodes[currentPath[depth]];
@@ -392,7 +442,8 @@ function Collections() {
           const updateChildren = (n: LocationNode, selected: boolean) => {
             n.isSelected = selected;
             n.isIndeterminate = false;
-            if (n.children) n.children.forEach((c) => updateChildren(c, selected));
+            if (n.children)
+              n.children.forEach((c) => updateChildren(c, selected));
           };
           if (node.children)
             node.children.forEach((c) => updateChildren(c, node.isSelected));
@@ -450,7 +501,7 @@ function Collections() {
   const fetchCollections = async (
     states: string[],
     depots: string[],
-    employees: string[]
+    employees: string[],
   ) => {
     setCollectionsLoading(true);
     setError(null);
@@ -471,7 +522,7 @@ function Collections() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-        }
+        },
       );
       if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -487,18 +538,26 @@ function Collections() {
       }
     } catch (error) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch collections"
+        error instanceof Error ? error.message : "Failed to fetch collections",
       );
     } finally {
       setCollectionsLoading(false);
     }
   };
 
-  const handleAmountChange = (collectionId: string, value: number) => {
-    setEditedAmounts((prev) => ({ ...prev, [collectionId]: value }));
-  };
+  const handleAmountChange = useCallback(
+    (collectionId: string, value: number) => {
+      setEditedAmounts((prev) => {
+        const next = { ...prev, [collectionId]: value };
+        editedAmountsRef.current = next;
+        return next;
+      });
+      amountChangeEmitter.dispatchEvent(
+        new CustomEvent("change", { detail: collectionId }),
+      );
+    },
+    [],
+  );
 
   const handleSelectAllLocations = () => {
     setLocationTree((prev) => {
@@ -520,7 +579,7 @@ function Collections() {
     tree.every(
       (node) =>
         node.isSelected &&
-        (!node.children || isAllLocationsSelected(node.children))
+        (!node.children || isAllLocationsSelected(node.children)),
     );
 
   const isAnyLocationSelected = (tree: LocationNode[]): boolean =>
@@ -528,15 +587,14 @@ function Collections() {
       (node) =>
         node.isSelected ||
         node.isIndeterminate ||
-        (node.children ? isAnyLocationSelected(node.children) : false)
+        (node.children ? isAnyLocationSelected(node.children) : false),
     );
 
   const handleVerifyCollections = async () => {
     const selectedRows = table.getSelectedRowModel().rows;
     const selectedCollectionsList = selectedRows.map((row) => ({
       collectionId: row.original.collection_id,
-      amount:
-        editedAmounts[row.original.collection_id] ?? row.original.amount,
+      amount: editedAmounts[row.original.collection_id] ?? row.original.amount,
     }));
 
     try {
@@ -560,7 +618,7 @@ function Collections() {
       }
       if (!response.ok) {
         throw new Error(
-          result.message || `HTTP error! status: ${response.status}`
+          result.message || `HTTP error! status: ${response.status}`,
         );
       }
       if (result.success) {
@@ -568,16 +626,12 @@ function Collections() {
         setEditedAmounts((prev) => {
           const newState = { ...prev };
           selectedRows.forEach(
-            (row) => delete newState[row.original.collection_id]
+            (row) => delete newState[row.original.collection_id],
           );
           return newState;
         });
         const { states, depots, employees } = getSelectedItems();
-        if (
-          states.length > 0 ||
-          depots.length > 0 ||
-          employees.length > 0
-        ) {
+        if (states.length > 0 || depots.length > 0 || employees.length > 0) {
           fetchCollections(states, depots, employees);
         }
       } else {
@@ -585,9 +639,7 @@ function Collections() {
       }
     } catch (error) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to verify collections"
+        error instanceof Error ? error.message : "Failed to verify collections",
       );
     }
   };
@@ -818,9 +870,7 @@ function Collections() {
               fontStyle: !row.original.verified ? "italic" : "normal",
             }}
           >
-            {!row.original.verified
-              ? "Pending"
-              : row.original.vchno || "—"}
+            {!row.original.verified ? "Pending" : row.original.vchno || "—"}
           </span>
         ),
       },
@@ -829,7 +879,7 @@ function Collections() {
         header: "Ledger",
         cell: ({ row }) => {
           const assignedLedger = ledgers.find(
-            (l) => l.ledcd === row.original.ledgerId
+            (l) => l.ledcd === row.original.ledgerId,
           );
           return (
             <span
@@ -853,58 +903,27 @@ function Collections() {
       {
         accessorKey: "amount",
         accessorFn: (row) => Number(row.amount),
-        header: ({ column }) => (
-          <div
-            className="flex items-center gap-1 cursor-pointer select-none"
-            onClick={column.getToggleSortingHandler()}
-          >
-            <span>Amount</span>
-            {column.getIsSorted() &&
-              (column.getIsSorted() === "asc" ? (
-                <ChevronUp size={12} />
-              ) : (
-                <ChevronDown size={12} />
-              ))}
-          </div>
-        ),
+        header: ({  }) => {
+          return null;
+        },
         cell: ({ row }) => (
-          <input
-            type="number"
-            value={
-              editedAmounts[row.original.collection_id] ??
-              Number(row.original.amount)
-            }
-            onChange={(e) =>
-              handleAmountChange(
-                row.original.collection_id,
-                Number(e.target.value)
-              )
-            }
-            className="w-24 h-7 text-right rounded-lg border px-2 text-xs focus:outline-none focus:ring-1"
-            style={{
-              borderColor: "#e8e9ef",
-              fontFamily: "'DM Sans', sans-serif",
-              color: "#1a1a2e",
-            }}
+          <EditableAmountCell
+            collectionId={row.original.collection_id}
+            initialAmount={Number(row.original.amount)}
+            editedAmountsRef={editedAmountsRef}
+            onChange={handleAmountChange}
           />
         ),
         aggregationFn: "sum",
-        aggregatedCell: ({ getValue }) => (
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#5b6af0",
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            ₹{Math.round(getValue() as number).toLocaleString("en-IN")}
-          </span>
-        ),
+        aggregatedCell: ({  }) => {
+          return null;
+        },
       },
     ],
-    [editedAmounts, ledgers]
+    [ledgers, handleAmountChange],
   );
+
+  console.log("edited amounts", editedAmounts); 
 
   const table = useReactTable({
     data: filteredCollections,
@@ -992,9 +1011,7 @@ function Collections() {
           >
             <div className="flex items-center gap-2">
               <MapPin size={14} style={{ color: "#5b6af0" }} />
-              <span
-                style={{ fontSize: 12, fontWeight: 500, color: "#1a1a2e" }}
-              >
+              <span style={{ fontSize: 12, fontWeight: 500, color: "#1a1a2e" }}>
                 Filter by Location
               </span>
             </div>
@@ -1071,9 +1088,7 @@ function Collections() {
                 onChange={handleSelectAllLocations}
                 className="w-3.5 h-3.5 rounded cursor-pointer accent-[#5b6af0]"
               />
-              <span
-                style={{ fontSize: 12, color: "#4a4c6a", fontWeight: 500 }}
-              >
+              <span style={{ fontSize: 12, color: "#4a4c6a", fontWeight: 500 }}>
                 Select all
               </span>
             </div>
@@ -1123,7 +1138,6 @@ function Collections() {
 
       {/* ── Collections panel ── */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden p-4 gap-3">
-
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -1258,7 +1272,10 @@ function Collections() {
               ] as { value: VerifiedFilter; label: string }[]
             ).map(({ value, label }) => {
               const isActive = verifiedFilter === value;
-              const activeColors: Record<string, { bg: string; color: string; border: string }> = {
+              const activeColors: Record<
+                string,
+                { bg: string; color: string; border: string }
+              > = {
                 all: { bg: "#5b6af0", color: "#fff", border: "#5b6af0" },
                 verified: { bg: "#16a34a", color: "#fff", border: "#16a34a" },
                 unverified: { bg: "#ef4444", color: "#fff", border: "#ef4444" },
@@ -1308,7 +1325,7 @@ function Collections() {
                   setGrouping((prev) =>
                     prev.includes(key)
                       ? prev.filter((p) => p !== key)
-                      : [...prev, key]
+                      : [...prev, key],
                   )
                 }
                 className="h-7 px-2.5 rounded-md text-xs font-medium transition-all"
@@ -1365,9 +1382,7 @@ function Collections() {
               >
                 <Banknote size={16} style={{ color: "#b0b2c0" }} />
               </div>
-              <p
-                style={{ fontSize: 13, color: "#6b6d85", fontWeight: 500 }}
-              >
+              <p style={{ fontSize: 13, color: "#6b6d85", fontWeight: 500 }}>
                 No collections found
               </p>
               <p style={{ fontSize: 12, color: "#b0b2c0" }}>
@@ -1410,7 +1425,7 @@ function Collections() {
                                 ? null
                                 : flexRender(
                                     h.column.columnDef.header,
-                                    h.getContext()
+                                    h.getContext(),
                                   )}
                             </th>
                           ))}
@@ -1458,7 +1473,7 @@ function Collections() {
                                     )}
                                     {flexRender(
                                       cell.column.columnDef.cell,
-                                      cell.getContext()
+                                      cell.getContext(),
                                     )}
                                     <span
                                       style={{
@@ -1473,12 +1488,12 @@ function Collections() {
                                   flexRender(
                                     cell.column.columnDef.aggregatedCell ??
                                       cell.column.columnDef.cell,
-                                    cell.getContext()
+                                    cell.getContext(),
                                   )
                                 ) : cell.getIsPlaceholder() ? null : (
                                   flexRender(
                                     cell.column.columnDef.cell,
-                                    cell.getContext()
+                                    cell.getContext(),
                                   )
                                 )}
                               </td>
@@ -1598,7 +1613,7 @@ function Collections() {
                                           fontFamily: "'DM Sans', sans-serif",
                                           fontStyle: !ledgers.find(
                                             (l) =>
-                                              l.ledcd === row.original.ledgerId
+                                              l.ledcd === row.original.ledgerId,
                                           )
                                             ? "italic"
                                             : "normal",
@@ -1607,7 +1622,7 @@ function Collections() {
                                         {(() => {
                                           const ledger = ledgers.find(
                                             (l) =>
-                                              l.ledcd === row.original.ledgerId
+                                              l.ledcd === row.original.ledgerId,
                                           );
                                           return ledger
                                             ? `${ledger.lednm} (${ledger.untshnm})`
@@ -1629,7 +1644,8 @@ function Collections() {
                                               color: "#b0b2c0",
                                               textTransform: "uppercase",
                                               letterSpacing: "0.06em",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                               marginBottom: 3,
                                             }}
                                           >
@@ -1639,7 +1655,8 @@ function Collections() {
                                             style={{
                                               fontSize: 12,
                                               color: "#4a4c6a",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                             }}
                                           >
                                             {row.original.chequeNumber || "—"}
@@ -1652,7 +1669,8 @@ function Collections() {
                                               color: "#b0b2c0",
                                               textTransform: "uppercase",
                                               letterSpacing: "0.06em",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                               marginBottom: 3,
                                             }}
                                           >
@@ -1662,7 +1680,8 @@ function Collections() {
                                             style={{
                                               fontSize: 12,
                                               color: "#4a4c6a",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                             }}
                                           >
                                             {row.original.chequeDate || "—"}
@@ -1675,7 +1694,8 @@ function Collections() {
                                               color: "#b0b2c0",
                                               textTransform: "uppercase",
                                               letterSpacing: "0.06em",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                               marginBottom: 3,
                                             }}
                                           >
@@ -1685,7 +1705,8 @@ function Collections() {
                                             style={{
                                               fontSize: 12,
                                               color: "#4a4c6a",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                             }}
                                           >
                                             {row.original.bankName || "—"}
@@ -1704,7 +1725,8 @@ function Collections() {
                                               color: "#b0b2c0",
                                               textTransform: "uppercase",
                                               letterSpacing: "0.06em",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                               marginBottom: 3,
                                             }}
                                           >
@@ -1714,7 +1736,8 @@ function Collections() {
                                             style={{
                                               fontSize: 12,
                                               color: "#4a4c6a",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                             }}
                                           >
                                             {row.original.upiId || "—"}
@@ -1727,7 +1750,8 @@ function Collections() {
                                               color: "#b0b2c0",
                                               textTransform: "uppercase",
                                               letterSpacing: "0.06em",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                               marginBottom: 3,
                                             }}
                                           >
@@ -1737,7 +1761,8 @@ function Collections() {
                                             style={{
                                               fontSize: 12,
                                               color: "#4a4c6a",
-                                              fontFamily: "'DM Sans', sans-serif",
+                                              fontFamily:
+                                                "'DM Sans', sans-serif",
                                             }}
                                           >
                                             {row.original.transactionId || "—"}
@@ -1835,10 +1860,14 @@ function Collections() {
                       disabled={hasVerifiedInSelection}
                       className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all"
                       style={{
-                        background: hasVerifiedInSelection ? "#e5e7eb" : "#22c55e",
+                        background: hasVerifiedInSelection
+                          ? "#e5e7eb"
+                          : "#22c55e",
                         color: hasVerifiedInSelection ? "#9ca3af" : "#fff",
                         fontFamily: "'DM Sans', sans-serif",
-                        cursor: hasVerifiedInSelection ? "not-allowed" : "pointer",
+                        cursor: hasVerifiedInSelection
+                          ? "not-allowed"
+                          : "pointer",
                         opacity: 1,
                       }}
                     >

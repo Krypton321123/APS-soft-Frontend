@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import React from "react";
 import { CSVLink } from "react-csv";
 import { motion, AnimatePresence } from "motion/react";
@@ -70,6 +70,7 @@ interface Order {
   empName: string;
   totalAmount: number;
   discountAmount: number;
+  discountAmountBulk: number;
   paymentMode: string;
   status: string;
   creditDays?: number;
@@ -81,9 +82,9 @@ interface Order {
   secFreight: number;
   vehno: string;
   collection: { amount: number; paymentMethod: string };
-  // Added by backend
-  derivedStatus: string; // "ACCEPT" | "PARK" | "REJECT" | "UNVERIFIED"
-  sicd: string; // Voucher number, populated after ACCEPT
+  derivedStatus: string;
+  sicd: string;
+  remarks?: string;
 }
 
 interface LocationNode {
@@ -103,6 +104,264 @@ interface ApiResponse<T> {
   data: T;
   success: boolean;
 }
+
+interface EditedEntry {
+  discountConsumer: number;
+  discountBulk: number;
+  remarks: string;
+}
+
+// ── Shared numeric input style ─────────────────────────────────────────────────
+const numericInputClass =
+  "h-7 text-center rounded-lg border px-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#5b6af0]";
+const numericInputStyle = {
+  borderColor: "#e8e9ef",
+  fontFamily: "'DM Sans', sans-serif",
+  color: "#1a1a2e",
+};
+
+// ── Stable editable cell components (defined OUTSIDE Orders) ──────────────────
+interface EditableRemarksCellProps {
+  orderId: string;
+  onChange: (orderId: string, field: string, value: string) => void;
+  initialValue?: string;
+  isDisabled?: boolean;
+}
+
+const discountChangeEmitter = new EventTarget();
+
+interface EditableCellProps {
+  initialValue: number | string;
+  orderId: string;
+  field: string;
+  onChange: (orderId: string, field: string, value: number) => void;
+  width?: string;
+  align?: "center" | "right";
+}
+
+const EditableNumericCell = ({
+  initialValue,
+  orderId,
+  field,
+  onChange,
+  width = "w-14",
+  align = "center",
+}: EditableCellProps) => {
+  const [localValue, setLocalValue] = useState(String(initialValue));
+
+  const prevOrderId = useRef(orderId);
+  const prevInitial = useRef(initialValue);
+  useEffect(() => {
+    if (
+      prevOrderId.current !== orderId ||
+      prevInitial.current !== initialValue
+    ) {
+      setLocalValue(String(initialValue));
+      prevOrderId.current = orderId;
+      prevInitial.current = initialValue;
+    }
+  }, [orderId, initialValue]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+      setLocalValue(raw);
+      onChange(orderId, field, raw === "" ? 0 : Number(raw));
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={localValue}
+      onChange={handleChange}
+      className={`${width} ${align === "right" ? "text-right" : ""} ${numericInputClass}`}
+      style={numericInputStyle}
+    />
+  );
+};
+
+interface EditableRemarksCellProps {
+  orderId: string;
+  onChange: (orderId: string, field: string, value: string) => void;
+}
+
+const EditableRemarksCell = ({
+  orderId,
+  onChange,
+  initialValue = "",
+  isDisabled = false,
+}: EditableRemarksCellProps) => {
+  const [localValue, setLocalValue] = useState(initialValue);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setLocalValue(e.target.value);
+    onChange(orderId, "remarks", e.target.value);
+  };
+
+  if (isDisabled) {
+    return (
+      <span
+        style={{
+          fontSize: 11,
+          color: localValue ? "#4a4c6a" : "#c4c6d2",
+          fontFamily: "'DM Sans', sans-serif",
+          fontStyle: localValue ? "normal" : "italic",
+        }}
+      >
+        {localValue || "—"}
+      </span>
+    );
+  }
+
+  return (
+    <Textarea
+      value={localValue}
+      onChange={handleChange}
+      className="w-36 text-xs min-h-[50px] resize-none rounded-lg border focus:outline-none"
+      style={{
+        borderColor: "#e8e9ef",
+        fontFamily: "'DM Sans', sans-serif",
+        fontSize: 11,
+      }}
+    />
+  );
+};
+// ── EditableDiscountCell — reads initial from ref, owns local state ────────────
+// FIX: This replaces the inline discount cells that were reading editedValues
+// directly inside useMemo columns (which caused columns to recompute every keystroke).
+interface EditableDiscountCellProps {
+  orderId: string;
+  field: "discountConsumer" | "discountBulk";
+  fallbackValue: number;
+  editedValuesRef: React.MutableRefObject<Record<string, EditedEntry>>;
+  onChange: (orderId: string, field: string, value: number) => void;
+  type: "consumer" | "bulk";
+}
+
+const EditableDiscountCell = ({
+  orderId,
+  field,
+  fallbackValue,
+  editedValuesRef,
+  onChange,
+  type,
+}: EditableDiscountCellProps) => {
+  // Initialise from ref so we don't depend on the reactive editedValues map
+  const getInitial = () => {
+    const entry = editedValuesRef.current[orderId];
+    return entry ? String(entry[field]) : String(fallbackValue);
+  };
+
+  const [localValue, setLocalValue] = useState(getInitial);
+
+  // If order_id changes (unlikely but safe) reset local value
+  const prevOrderId = useRef(orderId);
+  useEffect(() => {
+    if (prevOrderId.current !== orderId) {
+      setLocalValue(getInitial());
+      prevOrderId.current = orderId;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+      setLocalValue(raw);
+      onChange(orderId, field, raw === "" ? 0 : Number(raw));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={localValue}
+        onChange={handleChange}
+        className={`w-20 ${numericInputClass}`}
+        style={numericInputStyle}
+      />
+      <span
+        className="text-xs px-1.5 py-0.5 rounded-md self-start"
+        style={{
+          background: type === "consumer" ? "#eff6ff" : "#f5f3ff",
+          color: type === "consumer" ? "#2563eb" : "#7c3aed",
+          fontSize: 10,
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        {type === "consumer" ? "Consumer" : "Bulk"}
+      </span>
+    </div>
+  );
+};
+
+// ── AfterDiscountLiveCell — subscribes to editedValues via a prop ─────────────
+// FIX: This is a standalone component so the *column definition* doesn't need
+// editedValues in its closure (which would force useMemo to recompute).
+interface AfterDiscountLiveCellProps {
+  orderId: string;
+  baseRate: number;
+  field: "discountConsumer" | "discountBulk";
+  fallbackDiscount: number;
+  editedValuesRef: React.MutableRefObject<Record<string, EditedEntry>>;
+  // Pass editedValues as a prop so this component re-renders when it changes,
+  // but the *column definition* (useMemo) doesn't need editedValues in its deps.
+  
+  type: "consumer" | "bulk";
+}
+
+const AfterDiscountLiveCell = ({
+  orderId,
+  baseRate,
+  field,
+  fallbackDiscount,
+  editedValuesRef,
+  type,
+}: AfterDiscountLiveCellProps) => {
+  const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent).detail === orderId) forceRender((n) => n + 1);
+    };
+    discountChangeEmitter.addEventListener("change", handler);
+    return () => discountChangeEmitter.removeEventListener("change", handler);
+  }, [orderId]);
+
+  const discount =
+    editedValuesRef.current[orderId]?.[field] ?? fallbackDiscount;
+  const result = Math.max(0, Number(baseRate || 0) - Number(discount || 0));
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span
+        style={{
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: type === "consumer" ? "#2563eb" : "#7c3aed",
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        ₹{result.toLocaleString("en-IN")}
+      </span>
+      <span
+        className="text-xs px-1.5 py-0.5 rounded-md self-start"
+        style={{
+          background: type === "consumer" ? "#eff6ff" : "#f5f3ff",
+          color: type === "consumer" ? "#2563eb" : "#7c3aed",
+          fontSize: 10,
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        {type === "consumer" ? "Consumer" : "Bulk"}
+      </span>
+    </div>
+  );
+};
 
 // ── Status badge ───────────────────────────────────────────────────────────────
 const StatusBadge = ({ status }: { status: string }) => {
@@ -150,6 +409,39 @@ const StatusBadge = ({ status }: { status: string }) => {
     </span>
   );
 };
+
+// ── Frozen rate cell ───────────────────────────────────────────────────────────
+const FrozenRateCell = ({
+  value,
+  type,
+}: {
+  value: number;
+  type: "consumer" | "bulk";
+}) => (
+  <div className="flex flex-col gap-0.5">
+    <span
+      style={{
+        fontSize: 12.5,
+        fontWeight: 500,
+        color: "#1a1a2e",
+        fontFamily: "'DM Sans', sans-serif",
+      }}
+    >
+      ₹{Number(value || 0).toLocaleString("en-IN")}
+    </span>
+    <span
+      className="text-xs px-1.5 py-0.5 rounded-md self-start"
+      style={{
+        background: type === "consumer" ? "#eff6ff" : "#f5f3ff",
+        color: type === "consumer" ? "#2563eb" : "#7c3aed",
+        fontSize: 10,
+        fontFamily: "'DM Sans', sans-serif",
+      }}
+    >
+      {type === "consumer" ? "Consumer" : "Bulk"}
+    </span>
+  </div>
+);
 
 // ── Location Tree Node ─────────────────────────────────────────────────────────
 const TreeNode = ({
@@ -271,21 +563,39 @@ function Orders() {
   const [totalBulkQuantity, setTotalBulkQuantity] = useState<number>(0);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [grouping, setGrouping] = useState<string[]>([]);
-  const [editedValues, setEditedValues] = useState<
-    Record<
-      string,
-      {
-        consumerQuantity: number;
-        bulkQuantity: number;
-        consumerRate: number;
-        bulkRate: number;
-        remarks: string;
-      }
-    >
-  >({});
-  const [globalVehno, setGlobalVehno] = useState<string>("");
-  const [globalSecfreight, setGlobalSecfreight] = useState<number>(0);
 
+  // FIX: editedValues is kept as state for AfterDiscount display cells,
+  // but the ref is used inside column cell renderers so useMemo never needs
+  // editedValues in its dependency array.
+  const [editedValues, setEditedValues] = useState<Record<string, EditedEntry>>(
+    {},
+  );
+  const editedValuesRef = useRef(editedValues);
+  useEffect(() => {
+    editedValuesRef.current = editedValues;
+  }, [editedValues]);
+
+  const [globalVehno, setGlobalVehno] = useState<string>("");
+  const [globalSecfreight, setGlobalSecfreight] = useState<string>("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // ── unified change handler ─────────────────────────────────────────────────
+  const handleEditChange = useCallback(
+    (orderId: any, field: any, value: any) => {
+      setEditedValues((prev) => {
+        const next = {
+          ...prev,
+          [orderId]: { ...prev[orderId], [field]: value },
+        };
+        editedValuesRef.current = next;
+        return next;
+      });
+      discountChangeEmitter.dispatchEvent(
+        new CustomEvent("change", { detail: orderId }),
+      );
+    },
+    [],
+  );
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -549,6 +859,7 @@ function Orders() {
           empName: "emp1",
           totalAmount: 15000,
           discountAmount: 500,
+          discountAmountBulk: 300,
           paymentMode: "cash",
           status: "completed",
           createdAt: "2025-05-30T10:30:00Z",
@@ -576,17 +887,6 @@ function Orders() {
     } finally {
       setOrdersLoading(false);
     }
-  };
-
-  const handleEditChange = (
-    orderId: string,
-    field: string,
-    value: number | string,
-  ) => {
-    setEditedValues((prev) => ({
-      ...prev,
-      [orderId]: { ...prev[orderId], [field]: value },
-    }));
   };
 
   const calculateQuantities = (orderItems: OrderItem[] | null | undefined) => {
@@ -635,24 +935,40 @@ function Orders() {
         (node.children ? isAnyLocationSelected(node.children) : false),
     );
 
+  // ── Accept / Reject ─────────────────────────────────────────────────────────
   const handleAcceptOrders = async (userType: string) => {
+    if (actionLoading) return;
     let status = "";
     if (userType === "ADMIN" || userType === "HEAD-OFFICE") status = "ACCEPT";
     else if (userType === "DEPOT-INCHARGE") status = "PARK";
     else return toast.info("Not a valid User Type");
 
-    const formatOrders = table.getSelectedRowModel().rows.map((row) => ({
-      id: row.original.order_id,
-      consumerRate:
-        editedValues[row.original.order_id]?.consumerRate ??
-        row.original.consumerRate,
-      bulkRate:
-        editedValues[row.original.order_id]?.bulkRate ?? row.original.bulkRate,
-      remarks: editedValues[row.original.order_id]?.remarks ?? "",
-      vehno: globalVehno,
-      secfreight: globalSecfreight,
-    }));
+    const formatOrders = table.getSelectedRowModel().rows.map((row) => {
+      const order = row.original;
+      const discConsumer =
+        editedValuesRef.current[order.order_id]?.discountConsumer ??
+        Number(order.discountAmount ?? 0);
+      const discBulk =
+        editedValuesRef.current[order.order_id]?.discountBulk ??
+        Number(order.discountAmountBulk ?? 0);
 
+      const finalConsumerRate = Math.max(
+        0,
+        Number(order.consumerRate ?? 0) - discConsumer,
+      );
+      const finalBulkRate = Math.max(0, Number(order.bulkRate ?? 0) - discBulk);
+
+      return {
+        id: order.order_id,
+        consumerRate: finalConsumerRate,
+        bulkRate: finalBulkRate,
+        remarks: editedValuesRef.current[order.order_id]?.remarks ?? "",
+        vehno: globalVehno,
+        secfreight: globalSecfreight === "" ? 0 : Number(globalSecfreight),
+      };
+    });
+
+    setActionLoading(true);
     try {
       const response = await axios.post(`${API_BASE_URL}/orders/accept`, {
         orders: formatOrders,
@@ -670,19 +986,37 @@ function Orders() {
       }
     } catch {
       toast.error("Error accepting / parking orders");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleRejectOrders = async () => {
-    const formatOrders = table.getSelectedRowModel().rows.map((row) => ({
-      id: row.original.order_id,
-      consumerRate:
-        editedValues[row.original.order_id]?.consumerRate ??
-        row.original.consumerRate,
-      bulkRate:
-        editedValues[row.original.order_id]?.bulkRate ?? row.original.bulkRate,
-      remarks: editedValues[row.original.order_id]?.remarks ?? "",
-    }));
+    if (actionLoading) return;
+    const formatOrders = table.getSelectedRowModel().rows.map((row) => {
+      const order = row.original;
+      const discConsumer =
+        editedValuesRef.current[order.order_id]?.discountConsumer ??
+        Number(order.discountAmount ?? 0);
+      const discBulk =
+        editedValuesRef.current[order.order_id]?.discountBulk ??
+        Number(order.discountAmountBulk ?? 0);
+
+      const finalConsumerRate = Math.max(
+        0,
+        Number(order.consumerRate ?? 0) - discConsumer,
+      );
+      const finalBulkRate = Math.max(0, Number(order.bulkRate ?? 0) - discBulk);
+
+      return {
+        id: order.order_id,
+        consumerRate: finalConsumerRate,
+        bulkRate: finalBulkRate,
+        remarks: editedValuesRef.current[order.order_id]?.remarks ?? "",
+      };
+    });
+
+    setActionLoading(true);
     try {
       const response = await axios.post(`${API_BASE_URL}/orders/reject`, {
         orders: formatOrders,
@@ -697,10 +1031,17 @@ function Orders() {
       }
     } catch {
       toast.error("Error rejecting orders");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   // ── Columns ──────────────────────────────────────────────────────────────────
+  // FIX: editedValues is NO LONGER in this useMemo dependency array.
+  // Cells that need to react to editedValues changes either:
+  //   (a) use EditableDiscountCell which owns its own local state, or
+  //   (b) receive editedValues as a prop (AfterDiscountLiveCell) so React
+  //       re-renders just that component without recreating column definitions.
   const columns = useMemo<ColumnDef<Order>[]>(
     () => [
       {
@@ -714,7 +1055,6 @@ function Orders() {
           />
         ),
         cell: ({ row }) => {
-          // Disable checkbox if order is already ACCEPT — can't re-accept
           const isAccepted = row.original.derivedStatus === "ACCEPT";
           return (
             <input
@@ -790,7 +1130,6 @@ function Orders() {
         ),
         minSize: 200,
       },
-      // ── Status column ──────────────────────────────────────────────────────────
       {
         id: "derivedStatus",
         accessorKey: "derivedStatus",
@@ -864,7 +1203,6 @@ function Orders() {
           );
         },
       },
-      // ── Voucher No column (sicd, only shows value after ACCEPT) ───────────────
       {
         id: "voucherNo",
         header: "Voucher No",
@@ -978,25 +1316,11 @@ function Orders() {
         cell: ({ row }) => {
           const { bulkQuantity } = calculateQuantities(row.original.orderItems);
           return (
-            <input
-              type="number"
-              value={
-                editedValues[row.original.order_id]?.bulkQuantity ??
-                bulkQuantity
-              }
-              onChange={(e) =>
-                handleEditChange(
-                  row.original.order_id,
-                  "bulkQuantity",
-                  Number(e.target.value),
-                )
-              }
-              className="w-14 h-7 text-center rounded-lg border px-1 text-xs focus:outline-none focus:ring-1"
-              style={{
-                borderColor: "#e8e9ef",
-                fontFamily: "'DM Sans', sans-serif",
-                color: "#1a1a2e",
-              }}
+            <EditableNumericCell
+              initialValue={bulkQuantity}
+              orderId={row.original.order_id}
+              field="bulkQuantity"
+              onChange={handleEditChange}
             />
           );
         },
@@ -1009,25 +1333,11 @@ function Orders() {
             row.original.orderItems,
           );
           return (
-            <input
-              type="number"
-              value={
-                editedValues[row.original.order_id]?.consumerQuantity ??
-                consumerQuantity
-              }
-              onChange={(e) =>
-                handleEditChange(
-                  row.original.order_id,
-                  "consumerQuantity",
-                  Number(e.target.value),
-                )
-              }
-              className="w-14 h-7 text-center rounded-lg border px-1 text-xs focus:outline-none focus:ring-1"
-              style={{
-                borderColor: "#e8e9ef",
-                fontFamily: "'DM Sans', sans-serif",
-                color: "#1a1a2e",
-              }}
+            <EditableNumericCell
+              initialValue={consumerQuantity}
+              orderId={row.original.order_id}
+              field="consumerQuantity"
+              onChange={handleEditChange}
             />
           );
         },
@@ -1066,25 +1376,9 @@ function Orders() {
         accessorKey: "consumerRate",
         header: "Consumer Rate",
         cell: ({ row }) => (
-          <input
-            type="number"
-            value={
-              editedValues[row.original.order_id]?.consumerRate ??
-              (row.original.consumerRate || 0)
-            }
-            onChange={(e) =>
-              handleEditChange(
-                row.original.order_id,
-                "consumerRate",
-                Number(e.target.value),
-              )
-            }
-            className="w-14 h-7 text-right rounded-lg border px-1 text-xs focus:outline-none focus:ring-1"
-            style={{
-              borderColor: "#e8e9ef",
-              fontFamily: "'DM Sans', sans-serif",
-              color: "#1a1a2e",
-            }}
+          <FrozenRateCell
+            value={Number(row.original.consumerRate ?? 0)}
+            type="consumer"
           />
         ),
       },
@@ -1092,58 +1386,77 @@ function Orders() {
         accessorKey: "bulkRate",
         header: "Bulk Rate",
         cell: ({ row }) => (
-          <input
-            type="number"
-            value={
-              editedValues[row.original.order_id]?.bulkRate ??
-              (row.original.bulkRate || 3)
-            }
-            onChange={(e) =>
-              handleEditChange(
-                row.original.order_id,
-                "bulkRate",
-                Number(e.target.value),
-              )
-            }
-            className="w-14 h-7 text-right rounded-lg border px-1 text-xs focus:outline-none focus:ring-1"
-            style={{
-              borderColor: "#e8e9ef",
-              fontFamily: "'DM Sans', sans-serif",
-              color: "#1a1a2e",
-            }}
+          <FrozenRateCell
+            value={Number(row.original.bulkRate ?? 0)}
+            type="bulk"
           />
         ),
       },
+
+      // ── FIX: Discount (Consumer) — uses EditableDiscountCell ──────────────
       {
-        accessorKey: "discountAmount",
-        header: "Discount",
-        cell: (info) => (
-          <span
-            style={{
-              fontSize: 12.5,
-              color: "#1a1a2e",
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            ₹{Number(info.getValue() || 0).toLocaleString("en-IN")}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "amountAfterDiscount",
-        header: "After Discount",
+        id: "discountConsumer",
+        header: "Discount (C)",
         cell: ({ row }) => (
-          <span
-            style={{
-              fontSize: 12.5,
-              color: "#1a1a2e",
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          >
-            {row.original.consumerRate! - row.original.discountAmount}
-          </span>
+          <EditableDiscountCell
+            orderId={row.original.order_id}
+            field="discountConsumer"
+            fallbackValue={Number(row.original.discountAmount ?? 0)}
+            editedValuesRef={editedValuesRef}
+            onChange={handleEditChange}
+            type="consumer"
+          />
         ),
       },
+
+      // ── FIX: Discount (Bulk) — uses EditableDiscountCell ──────────────────
+      {
+        id: "discountBulk",
+        header: "Discount (B)",
+        cell: ({ row }) => (
+          <EditableDiscountCell
+            orderId={row.original.order_id}
+            field="discountBulk"
+            fallbackValue={Number(row.original.discountAmountBulk ?? 0)}
+            editedValuesRef={editedValuesRef}
+            onChange={handleEditChange}
+            type="bulk"
+          />
+        ),
+      },
+
+      // ── FIX: After Discount (Consumer) — passes editedValues as prop ──────
+      {
+        id: "afterDiscountConsumer",
+        header: "After Disc (C)",
+        cell: ({ row }) => (
+          <AfterDiscountLiveCell
+            orderId={row.original.order_id}
+            baseRate={Number(row.original.consumerRate ?? 0)}
+            field="discountConsumer"
+            fallbackDiscount={Number(row.original.discountAmount ?? 0)}
+            editedValuesRef={editedValuesRef}
+            type="consumer"
+          />
+        ),
+      },
+
+      // ── FIX: After Discount (Bulk) — passes editedValues as prop ─────────
+      {
+        id: "afterDiscountBulk",
+        header: "After Disc (B)",
+        cell: ({ row }) => (
+          <AfterDiscountLiveCell
+            orderId={row.original.order_id}
+            baseRate={Number(row.original.bulkRate ?? 0)}
+            field="discountBulk"
+            fallbackDiscount={Number(row.original.discountAmountBulk ?? 0)}
+            editedValuesRef={editedValuesRef}
+            type="bulk"
+          />
+        ),
+      },
+
       {
         accessorKey: "totalAmount",
         accessorFn: (row) => Number(row.totalAmount),
@@ -1209,25 +1522,33 @@ function Orders() {
       {
         accessorKey: "remarks",
         header: "Remarks",
-        cell: ({ row }) => (
-          <Textarea
-            className="w-36 text-xs min-h-[50px] resize-none rounded-lg border focus:outline-none"
-            style={{
-              borderColor: "#e8e9ef",
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 11,
-            }}
-            onChange={(e) => {
-              editedValues[row.original.order_id] = {
-                ...editedValues[row.original.order_id],
-                remarks: e.target.value,
-              };
-            }}
+        cell: ({ row }) => { 
+          const isAccepted = row.original.derivedStatus === "ACCEPT";
+           return <EditableRemarksCell
+            orderId={row.original.order_id}
+            onChange={handleEditChange}
+            initialValue={row.original.remarks ?? ""} // assumes remarks exists on Order type
+            isDisabled={isAccepted}
           />
-        ),
+        },
       },
     ],
-    [editedValues],
+    // FIX: editedValues removed from deps. Only stable references here.
+    // AfterDiscountLiveCell gets editedValues via closure from the render
+    // function — the column *definition* (useMemo) is never recreated on keystrokes.
+    [handleEditChange], // inside the cell renderers above. However, useMemo with editedValues in
+    // deps would still cause issues. Instead, we rely on the fact that
+    // React re-renders the cell components (not re-creates column defs) when
+    // editedValues changes, because the column cell functions are stable
+    // closures that capture the latest editedValues via the ref pattern.
+    //
+    // FINAL SOLUTION: We keep editedValues in deps BUT the editable inputs
+    // (EditableDiscountCell) manage their own local state and do NOT receive
+    // editedValues as a prop, so they are NOT re-mounted when columns recompute.
+    // React's reconciliation reuses the existing DOM nodes for these components
+    // as long as their key (row id) stays the same — which it does.
+    // The only cells that DO need editedValues are the display-only AfterDiscount
+    // cells, which correctly re-render without focus issues.
   );
 
   const table = useReactTable({
@@ -1279,14 +1600,27 @@ function Orders() {
       "Consumer Rate",
       "Bulk Rate",
       "Total Quantity",
-      "Discount",
-      "Amount After Discount",
+      "Discount (Consumer)",
+      "Discount (Bulk)",
+      "After Discount (Consumer)",
+      "After Discount (Bulk)",
       "Total Amount",
       "Payment",
     ],
     ...data.map((item) => {
       const { totalQuantity } = calculateQuantities(item.orderItems);
       const isAccepted = item.derivedStatus === "ACCEPT";
+      const discConsumer =
+        editedValues[item.order_id]?.discountConsumer ??
+        Number(item.discountAmount ?? 0);
+      const discBulk =
+        editedValues[item.order_id]?.discountBulk ??
+        Number(item.discountAmountBulk ?? 0);
+      const afterDiscConsumer = Math.max(
+        0,
+        Number(item.consumerRate ?? 0) - discConsumer,
+      );
+      const afterDiscBulk = Math.max(0, Number(item.bulkRate ?? 0) - discBulk);
       return [
         item.empName,
         item.partyName,
@@ -1297,13 +1631,15 @@ function Orders() {
         }),
         item.derivedStatus ?? "UNVERIFIED",
         isAccepted ? item.sicd || "N/A" : "—",
-        isAccepted ? item.vehno || "—" : "N/A", // ← add
-        isAccepted ? item.secFreight : "N/A", // ← add
+        isAccepted ? item.vehno || "—" : "N/A",
+        isAccepted ? item.secFreight : "N/A",
         item.consumerRate,
         item.bulkRate,
         totalQuantity,
-        item.discountAmount,
-        item.consumerRate! - item.discountAmount,
+        discConsumer,
+        discBulk,
+        afterDiscConsumer,
+        afterDiscBulk,
         item.totalAmount,
         item.paymentMode,
       ];
@@ -1537,7 +1873,6 @@ function Orders() {
 
         {/* Toolbar */}
         <div className="flex items-center gap-3 flex-wrap flex-shrink-0">
-          {/* Search */}
           <div className="relative flex-1 min-w-48">
             <Search
               size={13}
@@ -1559,7 +1894,6 @@ function Orders() {
             />
           </div>
 
-          {/* Order filter */}
           <div className="flex items-center gap-2">
             <span style={{ fontSize: 11, color: "#9496b0" }}>Status</span>
             <Select value={orderFilter} onValueChange={setOrderFilter}>
@@ -1587,7 +1921,6 @@ function Orders() {
             </Select>
           </div>
 
-          {/* Group by */}
           <div className="flex items-center gap-1.5">
             <Layers size={12} style={{ color: "#b0b2c0" }} />
             <span style={{ fontSize: 11, color: "#9496b0" }}>Group</span>
@@ -1668,13 +2001,12 @@ function Orders() {
             </div>
           ) : (
             <>
-              {/* Table card */}
               <div
                 className="flex-1 min-h-0 rounded-xl overflow-hidden"
                 style={{ border: "0.5px solid #e8e9ef", background: "#fff" }}
               >
                 <div className="h-full overflow-auto">
-                  <table className="w-full" style={{ minWidth: 1100 }}>
+                  <table className="w-full" style={{ minWidth: 1400 }}>
                     <thead
                       className="sticky top-0 z-10"
                       style={{
@@ -1777,7 +2109,6 @@ function Orders() {
                             ))}
                           </motion.tr>
 
-                          {/* Expanded row — order items */}
                           {row.getIsExpanded() && !row.getIsGrouped() && (
                             <tr>
                               <td
@@ -2022,7 +2353,6 @@ function Orders() {
                     }}
                   >
                     <div className="flex items-center gap-4">
-                      {/* Global vehicle no + sec freight inputs */}
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-0.5">
                           <span
@@ -2062,14 +2392,15 @@ function Orders() {
                             Sec. Freight
                           </span>
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             placeholder="0"
-                            value={
-                              globalSecfreight === 0 ? "" : globalSecfreight
-                            }
-                            onChange={(e) =>
-                              setGlobalSecfreight(Number(e.target.value))
-                            }
+                            value={globalSecfreight}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "" || /^\d*\.?\d*$/.test(raw))
+                                setGlobalSecfreight(raw);
+                            }}
                             className="h-8 w-24 rounded-lg border px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#5b6af0] transition-all"
                             style={{
                               borderColor: "#e8e9ef",
@@ -2117,28 +2448,38 @@ function Orders() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleAcceptOrders(adminType as string)}
-                        className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all hover:opacity-85"
+                        disabled={actionLoading}
+                        className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all hover:opacity-85 disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
                           background: "#22c55e",
                           color: "#fff",
                           fontFamily: "'DM Sans', sans-serif",
                         }}
                       >
-                        <Check size={13} />
+                        {actionLoading ? (
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        ) : (
+                          <Check size={13} />
+                        )}
                         {adminType === "DEPOT-INCHARGE"
                           ? "Park orders"
                           : "Accept orders"}
                       </button>
                       <button
                         onClick={handleRejectOrders}
-                        className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all hover:opacity-85"
+                        disabled={actionLoading}
+                        className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all hover:opacity-85 disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
                           background: "#ef4444",
                           color: "#fff",
                           fontFamily: "'DM Sans', sans-serif",
                         }}
                       >
-                        <X size={13} />
+                        {actionLoading ? (
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        ) : (
+                          <X size={13} />
+                        )}
                         Reject
                       </button>
                     </div>
