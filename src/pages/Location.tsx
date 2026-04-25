@@ -397,7 +397,7 @@ export default function Location() {
         >
           <MapPanner center={center} />
           <TileLayer
-            url="http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
+            url="https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
             attribution="&copy; Google Maps"
           />
           <Polyline positions={coordinates} color="#5b6af0" weight={3} opacity={0.8} />
