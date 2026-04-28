@@ -142,6 +142,12 @@ const EditableAmountCell = ({
 
 type VerifiedFilter = "all" | "verified" | "unverified";
 
+// ── Toast ──────────────────────────────────────────────────────────────────────
+interface ToastState {
+  message: string;
+  type: "success" | "error";
+}
+
 // ── Location Tree Node ─────────────────────────────────────────────────────────
 const TreeNode = ({
   node,
@@ -267,6 +273,13 @@ function Collections() {
   const editedAmountsRef = useRef<Record<string, number>>({});
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [grouping, setGrouping] = useState<string[]>([]);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   const filteredCollections = useMemo(() => {
     if (verifiedFilter === "all") return collections;
@@ -591,6 +604,9 @@ function Collections() {
     );
 
   const handleVerifyCollections = async () => {
+    if (isVerifying) return;
+    setIsVerifying(true);
+
     const selectedRows = table.getSelectedRowModel().rows;
     const selectedCollectionsList = selectedRows.map((row) => ({
       collectionId: row.original.collection_id,
@@ -613,7 +629,10 @@ function Collections() {
       const result = await response.json();
 
       if (result.statusCode === 422) {
-        alert(result.message || "No cash ledger found for this location.");
+        showToast(
+          result.message || "No cash ledger found for this location.",
+          "error",
+        );
         return;
       }
       if (!response.ok) {
@@ -622,6 +641,10 @@ function Collections() {
         );
       }
       if (result.success) {
+        showToast(
+          `${selectedCollectionsList.length} collection${selectedCollectionsList.length > 1 ? "s" : ""} verified successfully.`,
+          "success",
+        );
         setRowSelection({});
         setEditedAmounts((prev) => {
           const newState = { ...prev };
@@ -638,9 +661,12 @@ function Collections() {
         throw new Error(result.message || "Failed to verify collections");
       }
     } catch (error) {
-      setError(
+      showToast(
         error instanceof Error ? error.message : "Failed to verify collections",
+        "error",
       );
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -903,7 +929,7 @@ function Collections() {
       {
         accessorKey: "amount",
         accessorFn: (row) => Number(row.amount),
-        header: ({  }) => {
+        header: ({}) => {
           return null;
         },
         cell: ({ row }) => (
@@ -915,15 +941,13 @@ function Collections() {
           />
         ),
         aggregationFn: "sum",
-        aggregatedCell: ({  }) => {
+        aggregatedCell: ({}) => {
           return null;
         },
       },
     ],
     [ledgers, handleAmountChange],
   );
-
-  console.log("edited amounts", editedAmounts); 
 
   const table = useReactTable({
     data: filteredCollections,
@@ -992,6 +1016,38 @@ function Collections() {
       className="flex h-full overflow-hidden"
       style={{ fontFamily: "'DM Sans', sans-serif", background: "#f2f3f7" }}
     >
+      {/* ── Toast ── */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="fixed top-4 left-1/2 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
+            style={{
+              transform: "translateX(-50%)",
+              background: toast.type === "success" ? "#f0fdf4" : "#fff5f5",
+              border: `0.5px solid ${toast.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+              color: toast.type === "success" ? "#16a34a" : "#ef4444",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 13,
+              fontWeight: 500,
+              minWidth: 260,
+              pointerEvents: "none",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+            }}
+          >
+            {toast.type === "success" ? (
+              <ShieldCheck size={14} />
+            ) : (
+              <ShieldX size={14} />
+            )}
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Location Sidebar ── */}
       <motion.div
         initial={{ width: "17rem" }}
@@ -1842,7 +1898,6 @@ function Collections() {
                           ₹{totalSelectedAmount.toLocaleString("en-IN")}
                         </strong>
                       </span>
-                      {/* Warning shown when verified collections are in the selection */}
                       {hasVerifiedInSelection && (
                         <span
                           style={{
@@ -1857,22 +1912,41 @@ function Collections() {
                     </div>
                     <button
                       onClick={handleVerifyCollections}
-                      disabled={hasVerifiedInSelection}
+                      disabled={hasVerifiedInSelection || isVerifying}
                       className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-xs font-medium transition-all"
                       style={{
-                        background: hasVerifiedInSelection
-                          ? "#e5e7eb"
-                          : "#22c55e",
-                        color: hasVerifiedInSelection ? "#9ca3af" : "#fff",
+                        background:
+                          hasVerifiedInSelection || isVerifying
+                            ? "#e5e7eb"
+                            : "#22c55e",
+                        color:
+                          hasVerifiedInSelection || isVerifying
+                            ? "#9ca3af"
+                            : "#fff",
                         fontFamily: "'DM Sans', sans-serif",
-                        cursor: hasVerifiedInSelection
-                          ? "not-allowed"
-                          : "pointer",
-                        opacity: 1,
+                        cursor:
+                          hasVerifiedInSelection || isVerifying
+                            ? "not-allowed"
+                            : "pointer",
                       }}
                     >
-                      <Check size={13} />
-                      {hasVerifiedInSelection ? "Can't Verify" : "Verify Now"}
+                      {isVerifying ? (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full border border-current animate-spin"
+                            style={{ borderTopColor: "transparent" }}
+                          />
+                          Verifying…
+                        </>
+                      ) : hasVerifiedInSelection ? (
+                        <>
+                          <ShieldX size={13} /> Can't Verify
+                        </>
+                      ) : (
+                        <>
+                          <Check size={13} /> Verify Now
+                        </>
+                      )}
                     </button>
                   </motion.div>
                 )}
