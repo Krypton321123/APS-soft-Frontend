@@ -182,11 +182,6 @@ const EditableNumericCell = ({
   );
 };
 
-interface EditableRemarksCellProps {
-  orderId: string;
-  onChange: (orderId: string, field: string, value: string) => void;
-}
-
 const EditableRemarksCell = ({
   orderId,
   onChange,
@@ -228,9 +223,8 @@ const EditableRemarksCell = ({
     />
   );
 };
-// ── EditableDiscountCell — reads initial from ref, owns local state ────────────
-// FIX: This replaces the inline discount cells that were reading editedValues
-// directly inside useMemo columns (which caused columns to recompute every keystroke).
+
+// ── EditableDiscountCell — owns its own local state, initialises from the ref ──
 interface EditableDiscountCellProps {
   orderId: string;
   field: "discountConsumer" | "discountBulk";
@@ -248,7 +242,6 @@ const EditableDiscountCell = ({
   onChange,
   type,
 }: EditableDiscountCellProps) => {
-  // Initialise from ref so we don't depend on the reactive editedValues map
   const getInitial = () => {
     const entry = editedValuesRef.current[orderId];
     return entry ? String(entry[field]) : String(fallbackValue);
@@ -256,7 +249,6 @@ const EditableDiscountCell = ({
 
   const [localValue, setLocalValue] = useState(getInitial);
 
-  // If order_id changes (unlikely but safe) reset local value
   const prevOrderId = useRef(orderId);
   useEffect(() => {
     if (prevOrderId.current !== orderId) {
@@ -299,18 +291,13 @@ const EditableDiscountCell = ({
   );
 };
 
-// ── AfterDiscountLiveCell — subscribes to editedValues via a prop ─────────────
-// FIX: This is a standalone component so the *column definition* doesn't need
-// editedValues in its closure (which would force useMemo to recompute).
+// ── AfterDiscountLiveCell — listens to the emitter, reads from ref ─────────────
 interface AfterDiscountLiveCellProps {
   orderId: string;
   baseRate: number;
   field: "discountConsumer" | "discountBulk";
   fallbackDiscount: number;
   editedValuesRef: React.MutableRefObject<Record<string, EditedEntry>>;
-  // Pass editedValues as a prop so this component re-renders when it changes,
-  // but the *column definition* (useMemo) doesn't need editedValues in its deps.
-  
   type: "consumer" | "bulk";
 }
 
@@ -564,9 +551,6 @@ function Orders() {
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [grouping, setGrouping] = useState<string[]>([]);
 
-  // FIX: editedValues is kept as state for AfterDiscount display cells,
-  // but the ref is used inside column cell renderers so useMemo never needs
-  // editedValues in its dependency array.
   const [editedValues, setEditedValues] = useState<Record<string, EditedEntry>>(
     {},
   );
@@ -596,6 +580,7 @@ function Orders() {
     },
     [],
   );
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -935,6 +920,49 @@ function Orders() {
         (node.children ? isAnyLocationSelected(node.children) : false),
     );
 
+  // ── Build the formatted order payload (shared by accept + reject) ──────────
+  // This is the single source of truth for what gets sent to the backend.
+  // It includes both the discount values (to be saved on Order) and the
+  // post-discount rates (to be saved on AcceptedOrders / RejectedOrders).
+  const buildFormatOrders = useCallback(() => {
+    return table.getSelectedRowModel().rows.map((row) => {
+      const order = row.original;
+
+      // Discount the admin entered (falls back to what the order already has)
+      const discConsumer =
+        editedValuesRef.current[order.order_id]?.discountConsumer ??
+        Number(order.discountAmount ?? 0);
+      const discBulk =
+        editedValuesRef.current[order.order_id]?.discountBulk ??
+        Number(order.discountAmountBulk ?? 0);
+
+      // Post-discount rates saved to AcceptedOrders / RejectedOrders
+      const finalConsumerRate = Math.max(
+        0,
+        Number(order.consumerRate ?? 0) - discConsumer,
+      );
+      const finalBulkRate = Math.max(
+        0,
+        Number(order.bulkRate ?? 0) - discBulk,
+      );
+
+      return {
+        id: order.order_id,
+        // ── Saved to Order.discountAmount / discountAmountBulk ──
+        discountConsumer: discConsumer,
+        discountBulk: discBulk,
+        // ── Saved to AcceptedOrders.consumerRate / bulkRate ─────
+        consumerRate: finalConsumerRate,
+        bulkRate: finalBulkRate,
+        // ── Other fields ────────────────────────────────────────
+        remarks: editedValuesRef.current[order.order_id]?.remarks ?? "",
+        vehno: globalVehno,
+        secfreight: globalSecfreight === "" ? 0 : Number(globalSecfreight),
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalVehno, globalSecfreight]);
+
   // ── Accept / Reject ─────────────────────────────────────────────────────────
   const handleAcceptOrders = async (userType: string) => {
     if (actionLoading) return;
@@ -943,30 +971,7 @@ function Orders() {
     else if (userType === "DEPOT-INCHARGE") status = "PARK";
     else return toast.info("Not a valid User Type");
 
-    const formatOrders = table.getSelectedRowModel().rows.map((row) => {
-      const order = row.original;
-      const discConsumer =
-        editedValuesRef.current[order.order_id]?.discountConsumer ??
-        Number(order.discountAmount ?? 0);
-      const discBulk =
-        editedValuesRef.current[order.order_id]?.discountBulk ??
-        Number(order.discountAmountBulk ?? 0);
-
-      const finalConsumerRate = Math.max(
-        0,
-        Number(order.consumerRate ?? 0) - discConsumer,
-      );
-      const finalBulkRate = Math.max(0, Number(order.bulkRate ?? 0) - discBulk);
-
-      return {
-        id: order.order_id,
-        consumerRate: finalConsumerRate,
-        bulkRate: finalBulkRate,
-        remarks: editedValuesRef.current[order.order_id]?.remarks ?? "",
-        vehno: globalVehno,
-        secfreight: globalSecfreight === "" ? 0 : Number(globalSecfreight),
-      };
-    });
+    const formatOrders = buildFormatOrders();
 
     setActionLoading(true);
     try {
@@ -993,28 +998,7 @@ function Orders() {
 
   const handleRejectOrders = async () => {
     if (actionLoading) return;
-    const formatOrders = table.getSelectedRowModel().rows.map((row) => {
-      const order = row.original;
-      const discConsumer =
-        editedValuesRef.current[order.order_id]?.discountConsumer ??
-        Number(order.discountAmount ?? 0);
-      const discBulk =
-        editedValuesRef.current[order.order_id]?.discountBulk ??
-        Number(order.discountAmountBulk ?? 0);
-
-      const finalConsumerRate = Math.max(
-        0,
-        Number(order.consumerRate ?? 0) - discConsumer,
-      );
-      const finalBulkRate = Math.max(0, Number(order.bulkRate ?? 0) - discBulk);
-
-      return {
-        id: order.order_id,
-        consumerRate: finalConsumerRate,
-        bulkRate: finalBulkRate,
-        remarks: editedValuesRef.current[order.order_id]?.remarks ?? "",
-      };
-    });
+    const formatOrders = buildFormatOrders();
 
     setActionLoading(true);
     try {
@@ -1037,11 +1021,6 @@ function Orders() {
   };
 
   // ── Columns ──────────────────────────────────────────────────────────────────
-  // FIX: editedValues is NO LONGER in this useMemo dependency array.
-  // Cells that need to react to editedValues changes either:
-  //   (a) use EditableDiscountCell which owns its own local state, or
-  //   (b) receive editedValues as a prop (AfterDiscountLiveCell) so React
-  //       re-renders just that component without recreating column definitions.
   const columns = useMemo<ColumnDef<Order>[]>(
     () => [
       {
@@ -1392,8 +1371,6 @@ function Orders() {
           />
         ),
       },
-
-      // ── FIX: Discount (Consumer) — uses EditableDiscountCell ──────────────
       {
         id: "discountConsumer",
         header: "Discount (C)",
@@ -1408,8 +1385,6 @@ function Orders() {
           />
         ),
       },
-
-      // ── FIX: Discount (Bulk) — uses EditableDiscountCell ──────────────────
       {
         id: "discountBulk",
         header: "Discount (B)",
@@ -1424,8 +1399,6 @@ function Orders() {
           />
         ),
       },
-
-      // ── FIX: After Discount (Consumer) — passes editedValues as prop ──────
       {
         id: "afterDiscountConsumer",
         header: "After Disc (C)",
@@ -1440,8 +1413,6 @@ function Orders() {
           />
         ),
       },
-
-      // ── FIX: After Discount (Bulk) — passes editedValues as prop ─────────
       {
         id: "afterDiscountBulk",
         header: "After Disc (B)",
@@ -1456,7 +1427,6 @@ function Orders() {
           />
         ),
       },
-
       {
         accessorKey: "totalAmount",
         accessorFn: (row) => Number(row.totalAmount),
@@ -1522,33 +1492,20 @@ function Orders() {
       {
         accessorKey: "remarks",
         header: "Remarks",
-        cell: ({ row }) => { 
+        cell: ({ row }) => {
           const isAccepted = row.original.derivedStatus === "ACCEPT";
-           return <EditableRemarksCell
-            orderId={row.original.order_id}
-            onChange={handleEditChange}
-            initialValue={row.original.remarks ?? ""} // assumes remarks exists on Order type
-            isDisabled={isAccepted}
-          />
+          return (
+            <EditableRemarksCell
+              orderId={row.original.order_id}
+              onChange={handleEditChange}
+              initialValue={row.original.remarks ?? ""}
+              isDisabled={isAccepted}
+            />
+          );
         },
       },
     ],
-    // FIX: editedValues removed from deps. Only stable references here.
-    // AfterDiscountLiveCell gets editedValues via closure from the render
-    // function — the column *definition* (useMemo) is never recreated on keystrokes.
-    [handleEditChange], // inside the cell renderers above. However, useMemo with editedValues in
-    // deps would still cause issues. Instead, we rely on the fact that
-    // React re-renders the cell components (not re-creates column defs) when
-    // editedValues changes, because the column cell functions are stable
-    // closures that capture the latest editedValues via the ref pattern.
-    //
-    // FINAL SOLUTION: We keep editedValues in deps BUT the editable inputs
-    // (EditableDiscountCell) manage their own local state and do NOT receive
-    // editedValues as a prop, so they are NOT re-mounted when columns recompute.
-    // React's reconciliation reuses the existing DOM nodes for these components
-    // as long as their key (row id) stays the same — which it does.
-    // The only cells that DO need editedValues are the display-only AfterDiscount
-    // cells, which correctly re-render without focus issues.
+    [handleEditChange],
   );
 
   const table = useReactTable({
@@ -1620,7 +1577,10 @@ function Orders() {
         0,
         Number(item.consumerRate ?? 0) - discConsumer,
       );
-      const afterDiscBulk = Math.max(0, Number(item.bulkRate ?? 0) - discBulk);
+      const afterDiscBulk = Math.max(
+        0,
+        Number(item.bulkRate ?? 0) - discBulk,
+      );
       return [
         item.empName,
         item.partyName,
