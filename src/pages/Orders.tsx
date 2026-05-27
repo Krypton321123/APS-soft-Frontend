@@ -920,10 +920,6 @@ function Orders() {
         (node.children ? isAnyLocationSelected(node.children) : false),
     );
 
-  // ── Build the formatted order payload (shared by accept + reject) ──────────
-  // This is the single source of truth for what gets sent to the backend.
-  // It includes both the discount values (to be saved on Order) and the
-  // post-discount rates (to be saved on AcceptedOrders / RejectedOrders).
   const buildFormatOrders = useCallback(() => {
     return table.getSelectedRowModel().rows.map((row) => {
       const order = row.original;
@@ -941,10 +937,7 @@ function Orders() {
         0,
         Number(order.consumerRate ?? 0) - discConsumer,
       );
-      const finalBulkRate = Math.max(
-        0,
-        Number(order.bulkRate ?? 0) - discBulk,
-      );
+      const finalBulkRate = Math.max(0, Number(order.bulkRate ?? 0) - discBulk);
 
       return {
         id: order.order_id,
@@ -960,7 +953,7 @@ function Orders() {
         secfreight: globalSecfreight === "" ? 0 : Number(globalSecfreight),
       };
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalVehno, globalSecfreight]);
 
   // ── Accept / Reject ─────────────────────────────────────────────────────────
@@ -1034,15 +1027,22 @@ function Orders() {
           />
         ),
         cell: ({ row }) => {
-          const isAccepted = row.original.derivedStatus === "ACCEPT";
+          const status = row.original.derivedStatus;
+          const isLocked = status === "ACCEPT" || status === "REJECT";
           return (
             <input
               type="checkbox"
               checked={row.getIsSelected()}
-              disabled={isAccepted}
+              disabled={isLocked}
               onChange={row.getToggleSelectedHandler()}
               className="w-3.5 h-3.5 rounded cursor-pointer accent-[#5b6af0] disabled:opacity-30 disabled:cursor-not-allowed"
-              title={isAccepted ? "Order already accepted" : undefined}
+              title={
+                status === "ACCEPT"
+                  ? "Order already accepted"
+                  : status === "REJECT"
+                    ? "Order already rejected"
+                    : undefined
+              }
             />
           );
         },
@@ -1512,7 +1512,9 @@ function Orders() {
     data: orders ?? [],
     columns,
     state: { globalFilter, rowSelection, grouping, expanded },
-    enableRowSelection: (row) => row.original.derivedStatus !== "ACCEPT",
+    enableRowSelection: (row) =>
+      row.original.derivedStatus !== "ACCEPT" &&
+      row.original.derivedStatus !== "REJECT",
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
@@ -1577,10 +1579,7 @@ function Orders() {
         0,
         Number(item.consumerRate ?? 0) - discConsumer,
       );
-      const afterDiscBulk = Math.max(
-        0,
-        Number(item.bulkRate ?? 0) - discBulk,
-      );
+      const afterDiscBulk = Math.max(0, Number(item.bulkRate ?? 0) - discBulk);
       return [
         item.empName,
         item.partyName,
