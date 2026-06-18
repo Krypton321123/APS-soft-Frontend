@@ -71,6 +71,7 @@ interface Collection {
   verifiedAt?: string | null;
   verifiedBy?: string | null;
   ledgerId?: string | null;
+  mobile?: string | null;
 }
 
 interface LocationNode {
@@ -825,19 +826,33 @@ function Collections() {
         accessorKey: "otp",
         header: "OTP",
         cell: ({ row }) => (
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#1a1a2e",
-              fontFamily: "'DM Sans', sans-serif",
-              letterSpacing: "0.04em",
-            }}
-          >
-            {row.original.otp || "—"}
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#1a1a2e",
+                fontFamily: "'DM Sans', sans-serif",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {row.original.otp || "—"}
+            </span>
+            {row.original.mobile && (
+              <span
+                style={{
+                  fontSize: 10.5,
+                  color: "#9496b0",
+                  fontFamily: "'DM Sans', sans-serif",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {row.original.mobile}
+              </span>
+            )}
+          </div>
         ),
-        size: 70,
+        size: 110,
       },
       {
         accessorKey: "verified",
@@ -1686,6 +1701,31 @@ function Collections() {
                                               ? "No ledger assigned"
                                               : "Auto-assigned on verify";
                                         })()}
+                                      </p>
+                                    </div>
+
+                                    {/* Mobile number */}
+                                    <div>
+                                      <p
+                                        style={{
+                                          fontSize: 10,
+                                          color: "#b0b2c0",
+                                          textTransform: "uppercase",
+                                          letterSpacing: "0.06em",
+                                          fontFamily: "'DM Sans', sans-serif",
+                                          marginBottom: 3,
+                                        }}
+                                      >
+                                        Party Mobile
+                                      </p>
+                                      <p
+                                        style={{
+                                          fontSize: 12,
+                                          color: "#4a4c6a",
+                                          fontFamily: "'DM Sans', sans-serif",
+                                        }}
+                                      >
+                                        {row.original.mobile || "—"}
                                       </p>
                                     </div>
 
