@@ -32,6 +32,19 @@ const FLAG_PILL: Record<string, string> = {
   NONE: 'bg-gray-50  text-gray-400  border-gray-200',
 };
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const formatDate = (val: string) => {
+  const d = new Date(val);
+  return `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+};
+
+const formatTime = (val: string) => {
+  const d = new Date(val);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 const SelectField = ({
@@ -153,13 +166,13 @@ function Images() {
 
   const [images, setImages]               = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [currentIndex, setCurrentIndex]   = useState<number>(-1);  // ← NEW
+  const [currentIndex, setCurrentIndex]   = useState<number>(-1);
   const [loading, setLoading]             = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
 
-  const [partyFlags, setPartyFlags]     = useState<Record<string, string>>({});
+  const [partyFlags, setPartyFlags]         = useState<Record<string, string>>({});
   const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
-  const [remarksList, setRemarksList]   = useState<Record<string, string>>({});
+  const [remarksList, setRemarksList]       = useState<Record<string, string>>({});
 
   const [depotOptions, setDepotOptions]       = useState<string[]>([]);
   const [employeeOptions, setEmployeeOptions] = useState<string[]>([]);
@@ -213,7 +226,7 @@ function Images() {
     return grouped;
   }, [images, selectedFlag, groupByFlag, partyFlags]);
 
-  // Flat list of all visible images for navigation ← NEW
+  // Flat list of all visible images for navigation
   const flatImageList = useMemo<any[]>(() => {
     if (groupByFlag) {
       return Object.values(processedData as Record<string, any[]>).flat();
@@ -230,7 +243,7 @@ function Images() {
     };
   }, [processedData, groupByFlag]);
 
-  // ── Open image with index tracking ── NEW
+  // Open image with index tracking
   const openImage = useCallback((img: any) => {
     const idx = flatImageList.findIndex(i => i.image_id === img.image_id);
     setCurrentIndex(idx);
@@ -256,16 +269,14 @@ function Images() {
     setSelectedImage(flatImageList[newIdx]);
   }, [currentIndex, flatImageList]);
 
-  // ── Keyboard navigation ── NEW
+  // Keyboard navigation
   useEffect(() => {
     if (!selectedImage) return;
-
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft')  { e.preventDefault(); goPrev(); }
       if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
       if (e.key === 'Escape')     { e.preventDefault(); closeImage(); }
     };
-
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [selectedImage, goPrev, goNext, closeImage]);
@@ -282,18 +293,42 @@ function Images() {
         <div
           className="w-12 h-12 rounded-lg overflow-hidden cursor-pointer border transition-all duration-150 hover:scale-105"
           style={{ borderColor: '#e8e9ef' }}
-          onClick={() => openImage(info.row.original)}  // ← use openImage
+          onClick={() => openImage(info.row.original)}
         >
           <img src={info.getValue()} className="w-full h-full object-cover" />
         </div>
       ),
     }),
+    // ── DATE column ──
     columnHelper.accessor('createdAt', {
+      id: 'date',
       header: 'Date',
-      cell: info => {
-        const d = new Date(info.getValue());
-        return <span style={{ fontSize: 12, color: '#6b6d85' }}>{d.getDate()}-{d.getMonth()+1}-{d.getFullYear()}</span>;
-      },
+      cell: info => (
+        <span style={{ fontSize: 12, color: '#6b6d85' }}>
+          {formatDate(info.getValue())}
+        </span>
+      ),
+    }),
+    // ── TIME column ──
+    columnHelper.accessor('createdAt', {
+      id: 'time',
+      header: 'Time',
+      enableSorting: false,
+      cell: info => (
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded-md"
+          style={{
+            fontSize: 12,
+            color: '#5b6af0',
+            background: '#eef0fd',
+            fontFamily: "'DM Sans', sans-serif",
+            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: '0.03em',
+          }}
+        >
+          {formatTime(info.getValue())}
+        </span>
+      ),
     }),
     columnHelper.accessor('partyId', {
       header: 'Party',
@@ -330,14 +365,14 @@ function Images() {
         </div>
       ),
     }),
-    columnHelper.accessor('orderQuantity',   { header: 'Order Qty',   cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
-    columnHelper.accessor('collectionAmount',{ header: 'Collection',  cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
-    columnHelper.accessor('outstanding',     { header: 'Outstanding', cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
+    columnHelper.accessor('orderQuantity',    { header: 'Order Qty',   cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
+    columnHelper.accessor('collectionAmount', { header: 'Collection',  cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
+    columnHelper.accessor('outstanding',      { header: 'Outstanding', cell: info => <span style={{ fontSize: 13, color: '#1a1a2e' }}>{info.getValue()}</span> }),
     columnHelper.accessor('Remarks', {
       header: 'Remarks',
       cell: ({ row }) => <RemarksCell imageId={row.original.image_id} remarksList={remarksList} setRemarksList={setRemarksList} />,
     }),
-  ], [remarksList, editingPartyId, partyFlags, openImage]);  // ← added openImage dep
+  ], [remarksList, editingPartyId, partyFlags, openImage]);
 
   const table = useReactTable({
     data: groupByFlag ? [] : (processedData as any[]),
@@ -372,15 +407,29 @@ function Images() {
     const canvas = await html2canvas(document.getElementById('table-div')!);
     try {
       const iw = canvas.width / 3, ih = canvas.height / 3;
-      const pdf = new jsPDF({ orientation: 'p', unit: 'px', format: [iw, ih + 100] });
+      const pdf = new jsPDF({ orientation: 'p', unit: 'px', format: [iw, ih + 110] });
       const pw = pdf.internal.pageSize.getWidth();
-      pdf.setTextColor(0, 0, 0); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18);
+
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
       pdf.text('MAHESH EDIBLE OILS PRODUCTS PVT LTD', pw / 2, 15, { align: 'center' });
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(14);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(14);
       pdf.text('Daily Working Report', pw / 2, 30, { align: 'center' });
       pdf.text(`Employee - ${employee}`, pw / 2, 45, { align: 'center' });
       pdf.text(`${startDate} to ${endDate}`, pw / 2, 60, { align: 'center' });
-      pdf.addImage(canvas.toDataURL('image/png'), 'JPEG', 5, 75, iw, ih);
+
+      // Generated-at timestamp
+      const now = new Date();
+      const genTime = `Generated at ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} on ${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`;
+      pdf.setFontSize(10);
+      pdf.setTextColor(120, 120, 140);
+      pdf.text(genTime, pw / 2, 74, { align: 'center' });
+
+      pdf.addImage(canvas.toDataURL('image/png'), 'JPEG', 5, 87, iw, ih);
+
       const ts = new Date().toISOString().split('T');
       pdf.save(`dwr-${ts[0]}-${ts[1]}.pdf`);
     } catch (err) { console.error(err); }
@@ -388,6 +437,9 @@ function Images() {
 
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < flatImageList.length - 1;
+
+  // Grouped view table headers — now includes separate Date & Time
+  const groupedHeaders = ['No.', 'Photo', 'Date', 'Time', 'Party', 'Order Qty', 'Collection', 'Outstanding', 'Remarks'];
 
   return (
     <div className="h-full overflow-auto" style={{ fontFamily: "'DM Sans', sans-serif", background: '#f2f3f7' }}>
@@ -591,7 +643,7 @@ function Images() {
                 style={{ border: '0.5px solid #e8e9ef', background: '#fff' }}
               >
                 {groupByFlag ? (
-                  // Grouped view
+                  // ── Grouped view ──
                   <div className="divide-y" style={{ borderColor: '#f0f1f6' }}>
                     {Object.entries(processedData as Record<string, any[]>).map(([flag, items]) => {
                       const opt = FLAG_OPTIONS.find(o => o.value === flag);
@@ -613,38 +665,63 @@ function Images() {
                           <table className="w-full">
                             <thead>
                               <tr style={{ borderBottom: '0.5px solid #f0f1f6' }}>
-                                {['No.', 'Photo', 'Date', 'Party', 'Order Qty', 'Collection', 'Outstanding', 'Remarks'].map(h => (
+                                {groupedHeaders.map(h => (
                                   <th key={h} className="text-left px-4 py-2.5" style={{ fontSize: 11, color: '#b0b2c0', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody>
-                              {items.map((img: any, i: number) => {
-                                const d = new Date(img.createdAt);
-                                return (
-                                  <tr key={i} style={{ borderBottom: '0.5px solid #f4f5fa' }}>
-                                    <td className="px-4 py-3" style={{ fontSize: 12, color: '#b0b2c0' }}>{i + 1}</td>
-                                    <td className="px-4 py-3">
-                                      <div
-                                        className="w-10 h-10 rounded-lg overflow-hidden cursor-pointer border hover:scale-105 transition-transform"
-                                        style={{ borderColor: '#e8e9ef' }}
-                                        onClick={() => openImage(img)}  // ← use openImage
-                                      >
-                                        <img src={img.profileImageUrl} className="w-full h-full object-cover" />
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3" style={{ fontSize: 12, color: '#6b6d85' }}>{d.getDate()}-{d.getMonth()+1}-{d.getFullYear()}</td>
-                                    <td className="px-4 py-3">
-                                      <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1a2e' }}>{img.partyName}</p>
-                                      <p style={{ fontSize: 11, color: '#b0b2c0' }}>{img.partyId}</p>
-                                    </td>
-                                    <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.orderQuantity}</td>
-                                    <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.collectionAmount}</td>
-                                    <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.outstanding}</td>
-                                    <td className="px-4 py-3"><RemarksCell imageId={img.image_id} remarksList={remarksList} setRemarksList={setRemarksList} /></td>
-                                  </tr>
-                                );
-                              })}
+                              {items.map((img: any, i: number) => (
+                                <tr key={i} style={{ borderBottom: '0.5px solid #f4f5fa' }}>
+                                  {/* No. */}
+                                  <td className="px-4 py-3" style={{ fontSize: 12, color: '#b0b2c0' }}>{i + 1}</td>
+                                  {/* Photo */}
+                                  <td className="px-4 py-3">
+                                    <div
+                                      className="w-10 h-10 rounded-lg overflow-hidden cursor-pointer border hover:scale-105 transition-transform"
+                                      style={{ borderColor: '#e8e9ef' }}
+                                      onClick={() => openImage(img)}
+                                    >
+                                      <img src={img.profileImageUrl} className="w-full h-full object-cover" />
+                                    </div>
+                                  </td>
+                                  {/* Date */}
+                                  <td className="px-4 py-3" style={{ fontSize: 12, color: '#6b6d85' }}>
+                                    {formatDate(img.createdAt)}
+                                  </td>
+                                  {/* Time — separate column */}
+                                  <td className="px-4 py-3">
+                                    <span
+                                      className="inline-flex items-center px-2 py-0.5 rounded-md"
+                                      style={{
+                                        fontSize: 12,
+                                        color: '#5b6af0',
+                                        background: '#eef0fd',
+                                        fontFamily: "'DM Sans', sans-serif",
+                                        fontVariantNumeric: 'tabular-nums',
+                                        letterSpacing: '0.03em',
+                                      }}
+                                    >
+                                      {formatTime(img.createdAt)}
+                                    </span>
+                                  </td>
+                                  {/* Party */}
+                                  <td className="px-4 py-3">
+                                    <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1a2e' }}>{img.partyName}</p>
+                                    <p style={{ fontSize: 11, color: '#b0b2c0' }}>{img.partyId}</p>
+                                  </td>
+                                  {/* Order Qty */}
+                                  <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.orderQuantity}</td>
+                                  {/* Collection */}
+                                  <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.collectionAmount}</td>
+                                  {/* Outstanding */}
+                                  <td className="px-4 py-3" style={{ fontSize: 13, color: '#1a1a2e' }}>{img.outstanding}</td>
+                                  {/* Remarks */}
+                                  <td className="px-4 py-3">
+                                    <RemarksCell imageId={img.image_id} remarksList={remarksList} setRemarksList={setRemarksList} />
+                                  </td>
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -652,7 +729,7 @@ function Images() {
                     })}
                   </div>
                 ) : (
-                  // TanStack table
+                  // ── TanStack table ──
                   <table className="w-full">
                     <thead>
                       {table.getHeaderGroups().map(hg => (
@@ -694,9 +771,10 @@ function Images() {
                           ))}
                         </motion.tr>
                       ))}
-                      {/* Totals row */}
+                      {/* Totals row — shifted one extra column right to account for new Time column */}
                       <tr style={{ borderTop: '0.5px solid #e8e9ef', background: '#fafafa' }}>
                         <td className="px-4 py-3" style={{ fontSize: 12, color: '#b0b2c0' }}>—</td>
+                        <td className="px-4 py-3" />
                         <td className="px-4 py-3" />
                         <td className="px-4 py-3" />
                         <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>Total</td>
@@ -769,18 +847,26 @@ function Images() {
                 </div>
               )}
 
-              {/* Party name badge */}
+              {/* Party name + time badge */}
               {selectedImage?.partyName && (
                 <div
-                  className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap"
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-2"
                   style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)' }}
                 >
-                  {selectedImage.partyName}
+                  <span>{selectedImage.partyName}</span>
+                  {selectedImage.createdAt && (
+                    <>
+                      <span style={{ opacity: 0.4 }}>·</span>
+                      <span style={{ opacity: 0.8 }}>{formatDate(selectedImage.createdAt)}</span>
+                      <span style={{ opacity: 0.4 }}>·</span>
+                      <span style={{ color: '#a5b4fc' }}>{formatTime(selectedImage.createdAt)}</span>
+                    </>
+                  )}
                 </div>
               )}
             </motion.div>
 
-            {/* ── Prev / Next buttons (outside the image card, in the overlay) ── */}
+            {/* ── Prev / Next buttons ── */}
             {flatImageList.length > 1 && (
               <>
                 <button
