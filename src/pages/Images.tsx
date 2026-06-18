@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
@@ -10,13 +10,10 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, Download, RotateCcw, Search, X, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, RotateCcw, Search, X, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-
-// ── Font import (add to index.html or global CSS if not already present) ──────
-// <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const FLAG_OPTIONS = [
@@ -154,9 +151,10 @@ function Images() {
   const [selectedFlag, setSelectedFlag] = useState('ALL');
   const [groupByFlag, setGroupByFlag]   = useState(false);
 
-  const [images, setImages]             = useState<any[]>([]);
+  const [images, setImages]               = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [loading, setLoading]           = useState(false);
+  const [currentIndex, setCurrentIndex]   = useState<number>(-1);  // ← NEW
+  const [loading, setLoading]             = useState(false);
   const [showNoResults, setShowNoResults] = useState(false);
 
   const [partyFlags, setPartyFlags]     = useState<Record<string, string>>({});
@@ -215,6 +213,14 @@ function Images() {
     return grouped;
   }, [images, selectedFlag, groupByFlag, partyFlags]);
 
+  // Flat list of all visible images for navigation ← NEW
+  const flatImageList = useMemo<any[]>(() => {
+    if (groupByFlag) {
+      return Object.values(processedData as Record<string, any[]>).flat();
+    }
+    return processedData as any[];
+  }, [processedData, groupByFlag]);
+
   const filteredTotals = useMemo(() => {
     const flat = groupByFlag ? Object.values(processedData as Record<string, any[]>).flat() : (processedData as any[]);
     return {
@@ -223,6 +229,46 @@ function Images() {
       outstanding: flat.reduce((s: number, r: any) => s + (Number(r.outstanding)     || 0), 0),
     };
   }, [processedData, groupByFlag]);
+
+  // ── Open image with index tracking ── NEW
+  const openImage = useCallback((img: any) => {
+    const idx = flatImageList.findIndex(i => i.image_id === img.image_id);
+    setCurrentIndex(idx);
+    setSelectedImage(img);
+  }, [flatImageList]);
+
+  const closeImage = useCallback(() => {
+    setSelectedImage(null);
+    setCurrentIndex(-1);
+  }, []);
+
+  const goPrev = useCallback(() => {
+    if (currentIndex <= 0) return;
+    const newIdx = currentIndex - 1;
+    setCurrentIndex(newIdx);
+    setSelectedImage(flatImageList[newIdx]);
+  }, [currentIndex, flatImageList]);
+
+  const goNext = useCallback(() => {
+    if (currentIndex >= flatImageList.length - 1) return;
+    const newIdx = currentIndex + 1;
+    setCurrentIndex(newIdx);
+    setSelectedImage(flatImageList[newIdx]);
+  }, [currentIndex, flatImageList]);
+
+  // ── Keyboard navigation ── NEW
+  useEffect(() => {
+    if (!selectedImage) return;
+
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); goPrev(); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
+      if (e.key === 'Escape')     { e.preventDefault(); closeImage(); }
+    };
+
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [selectedImage, goPrev, goNext, closeImage]);
 
   const columnHelper = createColumnHelper<any>();
   const columns = useMemo(() => [
@@ -236,7 +282,7 @@ function Images() {
         <div
           className="w-12 h-12 rounded-lg overflow-hidden cursor-pointer border transition-all duration-150 hover:scale-105"
           style={{ borderColor: '#e8e9ef' }}
-          onClick={() => setSelectedImage(info.row.original)}
+          onClick={() => openImage(info.row.original)}  // ← use openImage
         >
           <img src={info.getValue()} className="w-full h-full object-cover" />
         </div>
@@ -291,7 +337,7 @@ function Images() {
       header: 'Remarks',
       cell: ({ row }) => <RemarksCell imageId={row.original.image_id} remarksList={remarksList} setRemarksList={setRemarksList} />,
     }),
-  ], [remarksList, editingPartyId, partyFlags]);
+  ], [remarksList, editingPartyId, partyFlags, openImage]);  // ← added openImage dep
 
   const table = useReactTable({
     data: groupByFlag ? [] : (processedData as any[]),
@@ -339,6 +385,9 @@ function Images() {
       pdf.save(`dwr-${ts[0]}-${ts[1]}.pdf`);
     } catch (err) { console.error(err); }
   };
+
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < flatImageList.length - 1;
 
   return (
     <div className="h-full overflow-auto" style={{ fontFamily: "'DM Sans', sans-serif", background: '#f2f3f7' }}>
@@ -576,7 +625,11 @@ function Images() {
                                   <tr key={i} style={{ borderBottom: '0.5px solid #f4f5fa' }}>
                                     <td className="px-4 py-3" style={{ fontSize: 12, color: '#b0b2c0' }}>{i + 1}</td>
                                     <td className="px-4 py-3">
-                                      <div className="w-10 h-10 rounded-lg overflow-hidden cursor-pointer border hover:scale-105 transition-transform" style={{ borderColor: '#e8e9ef' }} onClick={() => setSelectedImage(img)}>
+                                      <div
+                                        className="w-10 h-10 rounded-lg overflow-hidden cursor-pointer border hover:scale-105 transition-transform"
+                                        style={{ borderColor: '#e8e9ef' }}
+                                        onClick={() => openImage(img)}  // ← use openImage
+                                      >
                                         <img src={img.profileImageUrl} className="w-full h-full object-cover" />
                                       </div>
                                     </td>
@@ -671,7 +724,7 @@ function Images() {
             transition={{ duration: 0.15 }}
             className="fixed inset-0 flex items-center justify-center z-50 p-4"
             style={{ background: 'rgba(10,10,20,0.7)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setSelectedImage(null)}
+            onClick={closeImage}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -682,19 +735,115 @@ function Images() {
               style={{ maxWidth: '90vw', maxHeight: '85vh', boxShadow: '0 32px 80px rgba(0,0,0,0.4)' }}
               onClick={e => e.stopPropagation()}
             >
-              <img
-                src={selectedImage?.profileImageUrl}
-                alt="Full view"
-                className="max-w-full max-h-[80vh] object-contain block"
-              />
+              {/* Image */}
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={selectedImage?.image_id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                  src={selectedImage?.profileImageUrl}
+                  alt="Full view"
+                  className="max-w-full max-h-[80vh] object-contain block"
+                />
+              </AnimatePresence>
+
+              {/* Close button */}
               <button
-                onClick={() => setSelectedImage(null)}
+                onClick={closeImage}
                 className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-150 hover:opacity-80"
                 style={{ background: 'rgba(0,0,0,0.5)', color: '#fff' }}
+                title="Close (Esc)"
               >
                 <X size={14} />
               </button>
+
+              {/* Counter badge */}
+              {flatImageList.length > 1 && (
+                <div
+                  className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-medium"
+                  style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  {currentIndex + 1} / {flatImageList.length}
+                </div>
+              )}
+
+              {/* Party name badge */}
+              {selectedImage?.partyName && (
+                <div
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap"
+                  style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)' }}
+                >
+                  {selectedImage.partyName}
+                </div>
+              )}
             </motion.div>
+
+            {/* ── Prev / Next buttons (outside the image card, in the overlay) ── */}
+            {flatImageList.length > 1 && (
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); goPrev(); }}
+                  disabled={!hasPrev}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full transition-all duration-150"
+                  style={{
+                    background: hasPrev ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: hasPrev ? '#fff' : 'rgba(255,255,255,0.25)',
+                    border: '0.5px solid rgba(255,255,255,0.2)',
+                    cursor: hasPrev ? 'pointer' : 'not-allowed',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="Previous (←)"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+
+                <button
+                  onClick={e => { e.stopPropagation(); goNext(); }}
+                  disabled={!hasNext}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full transition-all duration-150"
+                  style={{
+                    background: hasNext ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: hasNext ? '#fff' : 'rgba(255,255,255,0.25)',
+                    border: '0.5px solid rgba(255,255,255,0.2)',
+                    cursor: hasNext ? 'pointer' : 'not-allowed',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="Next (→)"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </>
+            )}
+
+            {/* Keyboard hint */}
+            <div
+              className="absolute bottom-4 right-4 flex items-center gap-1.5"
+              style={{ opacity: 0.45 }}
+            >
+              {[['←', 'Prev'], ['→', 'Next'], ['Esc', 'Close']].map(([key, label]) => (
+                <span
+                  key={key}
+                  className="flex items-center gap-1 text-white"
+                  style={{ fontSize: 10, fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  <kbd
+                    style={{
+                      background: 'rgba(255,255,255,0.15)',
+                      border: '0.5px solid rgba(255,255,255,0.3)',
+                      borderRadius: 4,
+                      padding: '1px 5px',
+                      fontSize: 10,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {key}
+                  </kbd>
+                  {label}
+                </span>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
