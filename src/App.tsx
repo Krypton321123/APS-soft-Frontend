@@ -15,7 +15,7 @@ import DistanceReport from './pages/DistanceReport'
 
 function App() {
   return (
-    <Router>
+    <Router basename="/marketing">
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/orders" element={<ProtectedRoute><Sidebar><Orders /></Sidebar></ProtectedRoute>} />
